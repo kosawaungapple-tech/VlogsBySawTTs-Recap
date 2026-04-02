@@ -1,0 +1,32 @@
+import { VoiceOption } from './types';
+
+export const VOICE_OPTIONS: VoiceOption[] = [
+  { id: 'zephyr', name: 'Burmese Female (အမျိုးသမီး) - Nan', gender: 'female', voiceName: 'Zephyr' },
+  { id: 'puck', name: 'Burmese Male (အမျိုးသား) - Puck', gender: 'male', voiceName: 'Puck' },
+  { id: 'kore', name: 'Burmese Male (အမျိုးသား) - Kore', gender: 'male', voiceName: 'Kore' },
+  { id: 'charon', name: 'Burmese Male (အမျိုးသား) - Charon', gender: 'male', voiceName: 'Charon' },
+  { id: 'fenrir', name: 'Burmese Male (အမျိုးသား) - Fenrir', gender: 'male', voiceName: 'Fenrir' },
+];
+
+export const DEFAULT_RULES = [
+  { id: '1', original: 'Vlogs By Saw', replacement: 'ဗလော့ ဘိုင် စော' },
+  { id: '2', original: 'AI', replacement: 'အေအိုင်' },
+  { id: '3', original: 'မေတ္တာ', replacement: 'မစ်တာ' },
+  { id: '4', original: 'သစ္စာ', replacement: 'သစ်စာ' },
+  { id: '5', original: 'ပြဿနာ', replacement: 'ပရတ်သနာ' },
+  { id: '6', original: 'ဥက္က', replacement: 'အုတ်က' },
+  { id: '7', original: 'ဦးနှောက်', replacement: 'အုန်းနှောက်' },
+  { id: '8', original: 'တက္ကသိုလ်', replacement: 'တက်ကသိုလ်' },
+];
+
+export const GEMINI_MODELS = {
+  VERIFY: 'gemini-3-flash-preview',
+  LIVE: 'gemini-3.1-flash-live-preview',
+  TTS: 'gemini-2.5-flash-preview-tts',
+};
+
+export const GEMINI_MODEL_OPTIONS = [
+  { id: 'gemini-2.5-flash-preview-tts', name: 'Gemini 2.5 Flash TTS (Fastest)', description: 'Optimized for high-speed audio generation' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', description: 'Balanced performance and quality' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', description: 'Highest quality narration' },
+];

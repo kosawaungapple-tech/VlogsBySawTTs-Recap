@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Stores user account information for cloud synchronization.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique Access ID (e.g., VIP-0001)." },
+        "name": { "type": "string", "description": "The user's name." },
+        "password": { "type": "string", "description": "The hashed access password or PIN." },
+        "access_password": { "type": "string", "description": "The plain-text access password for admin reveal." },
+        "failedAttempts": { "type": "integer", "description": "Number of failed login attempts." },
+        "lastFailedAttempt": { "type": "string", "format": "date-time", "description": "Timestamp of the last failed attempt." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "isActive": { "type": "boolean" },
+        "api_key_stored": { "type": "string" }
+      },
+      "required": ["id", "name", "createdAt", "expiryDate", "isActive"]
+    },
+    "Config": {
+      "title": "System Configuration",
+      "description": "Global system configuration and API keys.",
+      "type": "object",
+      "properties": {
+        "gemini_api_key": { "type": "string" },
+        "rapidapi_key": { "type": "string" },
+        "openai_api_key": { "type": "string" },
+        "telegram_bot_token": { "type": "string" },
+        "telegram_chat_id": { "type": "string" },
+        "isSystemLive": { "type": "boolean" },
+        "allow_global_key": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PronunciationRule": {
+      "title": "Pronunciation Rule",
+      "description": "A rule for phonetic mapping.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "original": { "type": "string" },
+        "replacement": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["original", "replacement"]
+    },
+    "HistoryItem": {
+      "title": "History Item",
+      "description": "A record of a generated voiceover.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "text": { "type": "string" },
+        "audioStorageUrl": { "type": "string" },
+        "srtStorageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "audioStorageUrl", "srtStorageUrl", "createdAt"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Maps Firebase Auth UID to Access ID.",
+      "type": "object",
+      "properties": {
+        "accessCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["accessCode", "createdAt"]
+    },
+    "ApiKey": {
+      "title": "API Key",
+      "description": "Stored API keys for rotation.",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "type": { "type": "string", "enum": ["gemini", "openai", "rapidapi"] },
+        "is_active": { "type": "boolean" },
+        "is_full": { "type": "boolean" },
+        "usage_count": { "type": "integer" },
+        "last_used_at": { "type": "string", "format": "date-time" },
+        "last_full_at": { "type": "string", "format": "date-time" },
+        "index": { "type": "integer" }
+      },
+      "required": ["key", "type", "is_active", "is_full", "usage_count"]
+    },
+    "SecurityLog": {
+      "title": "Security Log",
+      "description": "Audit logs for security events.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "ip": { "type": "string" }
+      },
+      "required": ["userId", "action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents indexed by Access ID."
+    },
+    "/settings/global_config": {
+      "schema": "Config",
+      "description": "Global system configuration."
+    },
+    "/globalRules/{ruleId}": {
+      "schema": "PronunciationRule",
+      "description": "Global pronunciation rules."
+    },
+    "/history/{historyId}": {
+      "schema": "HistoryItem",
+      "description": "Generation history."
+    },
+    "/sessions/{uid}": {
+      "schema": "Session",
+      "description": "User sessions mapping UID to Access Code."
+    },
+    "/api_keys/{keyId}": {
+      "schema": "ApiKey",
+      "description": "API keys for rotation."
+    },
+    "/security_logs/{logId}": {
+      "schema": "SecurityLog",
+      "description": "Security audit logs."
+    }
+  }
+}

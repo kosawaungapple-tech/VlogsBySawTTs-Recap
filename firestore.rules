@@ -1,0 +1,212 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: accessCode (string)
+    // Fields:
+    //   - id: string (required) - Access ID
+    //   - name: string (required) - User name
+    //   - password: string - Hashed password
+    //   - access_password: string - Plain text password (for admin)
+    //   - failedAttempts: number - Failed login count
+    //   - lastFailedAttempt: string (ISO 8601) - Timestamp
+    //   - createdAt: string (ISO 8601) (required)
+    //   - expiryDate: string (ISO 8601) (required)
+    //   - isActive: bool (required)
+    //   - api_key_stored: string (optional)
+    //
+    // Collection: settings
+    // Document ID: global_config
+    // Fields:
+    //   - gemini_api_key: string
+    //   - rapidapi_key: string
+    //   - openai_api_key: string
+    //   - telegram_bot_token: string
+    //   - telegram_chat_id: string
+    //   - isSystemLive: bool
+    //   - allow_global_key: bool
+    //   - updatedAt: string (ISO 8601)
+    //
+    // Collection: globalRules
+    // Document ID: ruleId (string)
+    // Fields:
+    //   - id: string
+    //   - original: string (required)
+    //   - replacement: string (required)
+    //   - createdBy: string
+    //   - createdAt: string (ISO 8601)
+    //
+    // Collection: history
+    // Document ID: historyId (string)
+    // Fields:
+    //   - id: string
+    //   - userId: string (required) - Access Code
+    //   - text: string
+    //   - audioStorageUrl: string (required)
+    //   - srtStorageUrl: string (required)
+    //   - createdAt: string (ISO 8601) (required)
+    //
+    // Collection: sessions
+    // Document ID: uid (Firebase Auth UID)
+    // Fields:
+    //   - accessCode: string (required)
+    //   - createdAt: string (ISO 8601) (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((request.auth.token.email == "kosawaung.apple@gmail.com" && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/sessions/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.accessCode == 'saw_vlogs_2026'));
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+        (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'createdAt', 'expiryDate', 'isActive']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.expiryDate) &&
+             data.isActive is bool &&
+             (!('password' in data) || (data.password is string && data.password.size() < 128)) &&
+             (!('access_password' in data) || (data.access_password is string && data.access_password.size() < 100)) &&
+             (!('failedAttempts' in data) || data.failedAttempts is number) &&
+             (!('lastFailedAttempt' in data) || isValidDateString(data.lastFailedAttempt)) &&
+             (!('api_key_stored' in data) || (data.api_key_stored is string && data.api_key_stored.size() < 200));
+    }
+
+    function isValidConfig(data) {
+      return (!('gemini_api_key' in data) || (data.gemini_api_key is string && data.gemini_api_key.size() < 200)) &&
+             (!('rapidapi_key' in data) || (data.rapidapi_key is string && data.rapidapi_key.size() < 200)) &&
+             (!('openai_api_key' in data) || (data.openai_api_key is string && data.openai_api_key.size() < 200)) &&
+             (!('telegram_bot_token' in data) || (data.telegram_bot_token is string && data.telegram_bot_token.size() < 200)) &&
+             (!('telegram_chat_id' in data) || (data.telegram_chat_id is string && data.telegram_chat_id.size() < 100)) &&
+             (!('isSystemLive' in data) || data.isSystemLive is bool) &&
+             (!('allow_global_key' in data) || data.allow_global_key is bool) &&
+             (!('updatedAt' in data) || isValidDateString(data.updatedAt));
+    }
+
+    function isValidRule(data) {
+      return data.keys().hasAll(['original', 'replacement']) &&
+             data.original is string && data.original.size() > 0 && data.original.size() < 500 &&
+             data.replacement is string && data.replacement.size() > 0 && data.replacement.size() < 500 &&
+             (!('createdBy' in data) || data.createdBy is string) &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt));
+    }
+
+    function isValidHistory(data) {
+      return data.keys().hasAll(['userId', 'audioStorageUrl', 'srtStorageUrl', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 50 &&
+             isValidUrl(data.audioStorageUrl) &&
+             isValidUrl(data.srtStorageUrl) &&
+             isValidDateString(data.createdAt) &&
+             (!('text' in data) || (data.text is string && data.text.size() < 10000));
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['accessCode', 'createdAt']) &&
+             data.accessCode is string && data.accessCode.size() > 0 && data.accessCode.size() < 50 &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidApiKey(data) {
+      return data.keys().hasAll(['key', 'type', 'is_active', 'is_full', 'usage_count']) &&
+             data.key is string && data.key.size() > 0 && data.key.size() < 200 &&
+             data.type in ['gemini', 'openai', 'rapidapi'] &&
+             data.is_active is bool &&
+             data.is_full is bool &&
+             data.usage_count is number &&
+             (!('index' in data) || data.index is number) &&
+             (!('last_used_at' in data) || isValidDateString(data.last_used_at)) &&
+             (!('last_full_at' in data) || isValidDateString(data.last_full_at));
+    }
+
+    function isValidSecurityLog(data) {
+      return data.keys().hasAll(['userId', 'action', 'timestamp']) &&
+             data.userId is string &&
+             data.action is string &&
+             isValidDateString(data.timestamp) &&
+             (!('email' in data) || data.email is string) &&
+             (!('details' in data) || data.details is map) &&
+             (!('ip' in data) || data.ip is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Master Admin can do EVERYTHING
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Public Users can only READ their own status, but CANNOT see Admin Keys
+    match /settings/global_config {
+      allow read: if true; // Allows the app to fetch keys for generation
+      allow write: if isAdmin();
+    }
+
+    // Allow anonymous users to read/write their own session to track accessCode
+    match /sessions/{uid} {
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      allow write: if isAuthenticated() && request.auth.uid == uid && isValidSession(request.resource.data);
+    }
+
+    // Allow users to get their own profile if they have the access code
+    match /users/{userId} {
+      allow get: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['failedAttempts', 'lastFailedAttempt'])) &&
+        isValidUser(request.resource.data);
+    }
+
+    // Allow all authenticated users to read global rules
+    match /globalRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidRule(request.resource.data);
+    }
+
+    // Allow history access for authenticated users (only their own)
+    match /history/{historyId} {
+      allow create: if isAuthenticated() && isValidHistory(request.resource.data);
+      allow read, update, delete: if isAuthenticated() && 
+        (resource.data.userId == get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.accessCode || 
+         isAdmin());
+    }
+
+    // API Keys and Security Logs are Admin only
+    match /api_keys/{keyId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /security_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
