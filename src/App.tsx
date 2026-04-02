@@ -130,7 +130,7 @@ export default function App() {
       setAccessCode(code);
       
       // Fetch profile data directly from server for reliability without auth dependencies
-      getDocFromServer(doc(db, 'authorized_users', code)).then(async (snapshot) => {
+      getDocFromServer(doc(db, 'vlogs_users', code)).then(async (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as AuthorizedUser;
           
@@ -236,22 +236,40 @@ export default function App() {
     if (!isAuthReady) return;
     const seedDefaultAdmin = async () => {
       try {
-        const adminDoc = await getDocFromServer(doc(db, 'authorized_users', 'SAW-ADMIN-2026'));
+        // Seed SAW-ADMIN-2026
+        const adminDoc = await getDocFromServer(doc(db, 'vlogs_users', 'SAW-ADMIN-2026'));
         if (!adminDoc.exists()) {
           console.log('Seeding default admin Access Code...');
           const defaultAdmin: AuthorizedUser = {
             id: 'SAW-ADMIN-2026',
+            userId: 'SAW-ADMIN-2026',
             label: 'Default Admin',
             isActive: true,
             role: 'admin',
             createdAt: new Date().toISOString(),
             createdBy: 'system'
           };
-          await setDoc(doc(db, 'authorized_users', defaultAdmin.id), defaultAdmin);
-          console.log('Default admin seeded successfully.');
+          await setDoc(doc(db, 'vlogs_users', defaultAdmin.id), defaultAdmin);
         }
+
+        // Seed saw_vlogs_2026 as master admin
+        const masterAdminDoc = await getDocFromServer(doc(db, 'vlogs_users', 'saw_vlogs_2026'));
+        if (!masterAdminDoc.exists()) {
+          console.log('Seeding master admin Access Code...');
+          const masterAdmin: AuthorizedUser = {
+            id: 'saw_vlogs_2026',
+            userId: 'saw_vlogs_2026',
+            label: 'Master Admin',
+            isActive: true,
+            role: 'admin',
+            createdAt: new Date().toISOString(),
+            createdBy: 'system'
+          };
+          await setDoc(doc(db, 'vlogs_users', masterAdmin.id), masterAdmin);
+        }
+        console.log('Admin seeding check completed.');
       } catch (err) {
-        console.error('Failed to seed default admin:', err);
+        console.error('Failed to seed admins:', err);
       }
     };
     
@@ -293,10 +311,10 @@ export default function App() {
 
       console.log('Attempting public fetch for Access Code:', code);
       // Requirement 2: Direct Document Match using getDocFromServer for maximum reliability
-      const codeDoc = await getDocFromServer(doc(db, 'authorized_users', code));
+      const codeDoc = await getDocFromServer(doc(db, 'vlogs_users', code));
       
       if (!codeDoc.exists()) {
-        console.warn('Access Code not found in authorized_users collection');
+        console.warn('Access Code not found in vlogs_users collection');
         setError('Invalid Access Code. Please contact Admin for authorization.');
         return;
       }
@@ -738,7 +756,13 @@ export default function App() {
             <p className="text-slate-500 font-medium">Initializing Narration Engine...</p>
           </div>
         ) : isAdminRoute ? (
-          <AdminDashboard isAuthReady={isAuthReady} />
+          <AdminDashboard 
+            isAuthReady={isAuthReady} 
+            onAdminLogin={(code) => {
+              setIsAccessGranted(true);
+              setAccessCode(code);
+            }}
+          />
         ) : !isAccessGranted ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-20 h-20 bg-brand-purple/10 text-brand-purple rounded-3xl flex items-center justify-center mb-6">

@@ -12,6 +12,7 @@ export interface User {
 
 export interface AuthorizedUser {
   id: string; // Document ID (Access Code)
+  userId?: string; // Explicit User ID as requested
   createdAt: any; // Firestore Timestamp
   isActive: boolean;
   role: 'admin' | 'user';

@@ -31,9 +31,10 @@ import { Toast, ToastType } from './Toast';
 
 interface AdminDashboardProps {
   isAuthReady: boolean;
+  onAdminLogin?: (code: string) => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onAdminLogin }) => {
   const [authorizedUsers, setAuthorizedUsers] = useState<AuthorizedUser[]>([]);
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,13 +89,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
   const [isDeletingRule, setIsDeletingRule] = useState<string | null>(null);
   const [isRulesLoading, setIsRulesLoading] = useState(true);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [isSessionSynced, setIsSessionSynced] = useState(false);
 
   useEffect(() => {
     const savedAdminAuth = localStorage.getItem('vbs_admin_auth');
     if (savedAdminAuth === 'saw_vlogs_2026') {
       setIsAuthenticated(true);
+      
+      // Ensure session is synced on mount if already authenticated
+      if (isAuthReady && auth.currentUser) {
+        setDoc(doc(db, 'sessions', auth.currentUser.uid), {
+          accessCode: 'saw_vlogs_2026',
+          createdAt: new Date().toISOString()
+        })
+        .then(() => {
+          setIsSessionSynced(true);
+          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
+        })
+        .catch(err => {
+          console.error('Failed to sync admin session on mount:', err);
+          // Still set synced if it's a permission error on the session itself (unlikely)
+          // but we want to try listing anyway if we think we are admin
+          setIsSessionSynced(true); 
+          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
+        });
+      } else if (isAuthReady) {
+        setIsSessionSynced(true);
+        if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
+      }
     }
-  }, []);
+  }, [isAuthReady]);
 
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
@@ -115,6 +139,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
     if (adminIdInput === 'saw_vlogs_2026') {
       setIsAuthenticated(true);
       localStorage.setItem('vbs_admin_auth', 'saw_vlogs_2026');
+      localStorage.setItem('vbs_access_granted', 'true');
+      localStorage.setItem('vbs_access_code', 'saw_vlogs_2026');
+      
+      // Sync session for security rules
+      if (auth.currentUser) {
+        try {
+          await setDoc(doc(db, 'sessions', auth.currentUser.uid), {
+            accessCode: 'saw_vlogs_2026',
+            createdAt: new Date().toISOString()
+          });
+          console.log('Admin session synced successfully.');
+          setIsSessionSynced(true);
+          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
+        } catch (e) {
+          console.error('Failed to sync admin session:', e);
+          setIsSessionSynced(true); // Proceed anyway
+          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
+        }
+      } else {
+        setIsSessionSynced(true);
+        if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
+      }
+      
       setToast({
         message: 'Admin Access Granted! 🛡️',
         type: 'success',
@@ -136,9 +183,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
   };
 
   useEffect(() => {
-    if (!isAuthenticated || !isAuthReady) return;
+    if (!isAuthenticated || !isAuthReady || !isSessionSynced) return;
 
-    const q = query(collection(db, 'authorized_users'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'vlogs_users'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const users = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -147,15 +194,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
       setAuthorizedUsers(users);
       setIsLoading(false);
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'authorized_users');
       setIsLoading(false);
+      handleFirestoreError(err, OperationType.LIST, 'vlogs_users');
     });
 
     return () => unsubscribe();
-  }, [isAuthenticated, isAuthReady]);
+  }, [isAuthenticated, isAuthReady, isSessionSynced]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isAuthReady) return;
+    if (!isAuthenticated || !isAuthReady || !isSessionSynced) return;
 
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -166,15 +213,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
       setRegisteredUsers(users);
       setIsUsersLoading(false);
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'users');
       setIsUsersLoading(false);
+      handleFirestoreError(err, OperationType.LIST, 'users');
     });
 
     return () => unsubscribe();
-  }, [isAuthenticated, isAuthReady]);
+  }, [isAuthenticated, isAuthReady, isSessionSynced]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isAuthReady) return;
+    if (!isAuthenticated || !isAuthReady || !isSessionSynced) return;
 
     const unsubscribe = onSnapshot(collection(db, 'globalRules'), (snapshot) => {
       const fetchedRules = snapshot.docs.map(doc => ({
@@ -189,7 +236,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
     });
 
     return () => unsubscribe();
-  }, [isAuthenticated, isAuthReady]);
+  }, [isAuthenticated, isAuthReady, isSessionSynced]);
 
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -354,6 +401,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
     try {
       const accessCode = newId.trim();
       const newAuthorizedUser = {
+        id: accessCode, // Include id
+        userId: accessCode, // Explicitly set userId as requested
         isActive: true,
         createdAt: new Date().toISOString(),
         note: newNote.trim(),
@@ -362,7 +411,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         expiryDate: newExpiryDate || null
       };
 
-      await setDoc(doc(db, 'authorized_users', accessCode), newAuthorizedUser);
+      await setDoc(doc(db, 'vlogs_users', accessCode), newAuthorizedUser);
       
       setNewId('');
       setNewNote('');
@@ -375,6 +424,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         isVisible: true
       });
     } catch (err: any) {
+      handleFirestoreError(err, OperationType.CREATE, `vlogs_users/${newId.trim()}`);
       setToast({
         message: 'Error: Could not create ID. Please try again.',
         type: 'error',
@@ -390,7 +440,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
     if (password === null) return;
 
     try {
-      await updateDoc(doc(db, 'authorized_users', id), {
+      await updateDoc(doc(db, 'vlogs_users', id), {
         password: password.trim() || null
       });
       setToast({
@@ -399,7 +449,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `authorized_users/${id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
         message: 'Failed to update user password.',
         type: 'error',
@@ -423,7 +473,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
       const newExpiry = new Date(baseDate);
       newExpiry.setDate(newExpiry.getDate() + 30);
       
-      await updateDoc(doc(db, 'authorized_users', id), {
+      await updateDoc(doc(db, 'vlogs_users', id), {
         expiryDate: newExpiry.toISOString()
       });
       
@@ -433,7 +483,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `authorized_users/${id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
         message: 'Failed to extend subscription.',
         type: 'error',
@@ -453,7 +503,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         return;
       }
       
-      await updateDoc(doc(db, 'authorized_users', id), {
+      await updateDoc(doc(db, 'vlogs_users', id), {
         expiryDate: date.toISOString()
       });
       
@@ -463,7 +513,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `authorized_users/${id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
         message: 'Failed to set custom expiry date.',
         type: 'error',
@@ -474,7 +524,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
     try {
-      await updateDoc(doc(db, 'authorized_users', id), {
+      await updateDoc(doc(db, 'vlogs_users', id), {
         isActive: !currentStatus
       });
       setToast({
@@ -483,7 +533,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `authorized_users/${id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
         message: 'Failed to update user status.',
         type: 'error',
@@ -494,7 +544,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
 
   const handleToggleRole = async (id: string, currentRole: 'admin' | 'user') => {
     try {
-      await updateDoc(doc(db, 'authorized_users', id), {
+      await updateDoc(doc(db, 'vlogs_users', id), {
         role: currentRole === 'admin' ? 'user' : 'admin'
       });
       setToast({
@@ -503,7 +553,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `authorized_users/${id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
         message: 'Failed to update user role.',
         type: 'error',
@@ -517,14 +567,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady }) =
 
     setIsDeletingUser(id);
     try {
-      await deleteDoc(doc(db, 'authorized_users', id));
+      await deleteDoc(doc(db, 'vlogs_users', id));
       setToast({
         message: 'User ID Deleted Successfully!',
         type: 'success',
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `authorized_users/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `vlogs_users/${id}`);
       setToast({
         message: 'Failed to delete User ID.',
         type: 'error',
