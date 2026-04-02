@@ -6,6 +6,7 @@ interface HeaderProps {
   toggleTheme: () => void;
   onOpenTools: () => void;
   isAccessGranted: boolean;
+  isAdmin: boolean;
   onLogout: () => void;
 }
 
@@ -14,6 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   toggleTheme, 
   onOpenTools,
   isAccessGranted,
+  isAdmin,
   onLogout
 }) => {
   return (
@@ -43,12 +45,14 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           {isAccessGranted && (
             <div className="flex items-center gap-2 sm:gap-3">
-              <button 
-                onClick={() => window.location.pathname = '/vbs-admin'}
-                className="px-2 py-1 sm:px-3 sm:py-1.5 bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple border border-brand-purple/20 dark:border-brand-purple/30 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase hover:bg-brand-purple hover:text-white transition-all"
-              >
-                Admin
-              </button>
+              {isAdmin && (
+                <button 
+                  onClick={() => window.location.pathname = '/vbs-admin'}
+                  className="px-2 py-1 sm:px-3 sm:py-1.5 bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple border border-brand-purple/20 dark:border-brand-purple/30 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase hover:bg-brand-purple hover:text-white transition-all"
+                >
+                  Admin
+                </button>
+              )}
               <button 
                 onClick={onOpenTools}
                 className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors text-slate-500 dark:text-slate-400"

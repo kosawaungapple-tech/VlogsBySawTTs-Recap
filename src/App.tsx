@@ -64,9 +64,9 @@ export default function App() {
   // Auth & Access State (Custom)
   const [accessCodeInput, setAccessCodeInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
-  const [isAccessGranted, setIsAccessGranted] = useState(true); // Default to true for preview environment
+  const [isAccessGranted, setIsAccessGranted] = useState(false); // Force login by default
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
-  const [accessCode, setAccessCode] = useState<string | null>('preview-user');
+  const [accessCode, setAccessCode] = useState<string | null>(null);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   // Handle Anonymous Auth
@@ -133,6 +133,17 @@ export default function App() {
       getDocFromServer(doc(db, 'authorized_users', code)).then(async (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as AuthorizedUser;
+          
+          // Check for expiry on session restore
+          if (data.expiryDate) {
+            const expiry = new Date(data.expiryDate);
+            if (expiry < new Date()) {
+              console.warn('Session expired on restore');
+              handleLogout();
+              return;
+            }
+          }
+
           setProfile(data);
           
           // Sync API Key from Firestore to LocalStorage if missing locally
@@ -264,6 +275,21 @@ export default function App() {
     setError(null);
 
     try {
+      // Admin Bypass
+      if (code === 'saw_vlogs_2026') {
+        setIsAccessGranted(true);
+        setAccessCode(code);
+        localStorage.setItem('vbs_access_granted', 'true');
+        localStorage.setItem('vbs_access_code', code);
+        localStorage.setItem('vbs_admin_auth', 'saw_vlogs_2026');
+        setToast({ message: 'Welcome Admin Saw!', type: 'success' });
+        setTimeout(() => {
+          setToast(null);
+          window.location.pathname = '/vbs-admin';
+        }, 1500);
+        return;
+      }
+
       console.log('Attempting public fetch for Access Code:', code);
       // Requirement 2: Direct Document Match using getDocFromServer for maximum reliability
       const codeDoc = await getDocFromServer(doc(db, 'authorized_users', code));
@@ -700,6 +726,7 @@ export default function App() {
         toggleTheme={() => setIsDarkMode(!isDarkMode)} 
         onOpenTools={() => setIsApiKeyModalOpen(true)}
         isAccessGranted={isAccessGranted}
+        isAdmin={accessCode === 'saw_vlogs_2026'}
         onLogout={handleLogout}
       />
 
@@ -735,16 +762,23 @@ export default function App() {
                   />
                 </div>
 
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                  <input
-                    type="password"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    placeholder="Enter Password (if required)..."
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-lg font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                  />
-                </div>
+                {accessCodeInput.trim() !== 'saw_vlogs_2026' && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="relative"
+                  >
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                    <input
+                      type="password"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="Enter Password..."
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-lg font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
+                      required
+                    />
+                  </motion.div>
+                )}
                 
                 {error && (
                   <div className="text-red-500 text-sm font-medium flex items-center justify-center gap-2">
