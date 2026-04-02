@@ -12,38 +12,39 @@ export const MiniAudioPlayer: React.FC<MiniAudioPlayerProps> = ({ base64Data }) 
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [preservesPitch, setPreservesPitch] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string>('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (base64Data) {
       try {
-        // Construct Data URI directly from base64Data
-        // We assume it's WAV since that's what our service produces
-        const dataUri = `data:audio/wav;base64,${base64Data}`;
-        setAudioUrl(dataUri);
+        const binaryString = window.atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const wavBlob = pcmToWav(bytes, 24000);
+        const url = URL.createObjectURL(wavBlob);
+        setAudioUrl(url);
         
         // Force reload the audio element
         if (audioRef.current) {
           audioRef.current.load();
           audioRef.current.playbackRate = playbackRate;
-          // @ts-ignore
-          audioRef.current.preservesPitch = preservesPitch;
         }
+
+        return () => URL.revokeObjectURL(url);
       } catch (err) {
-        console.error("Error creating audio Data URI:", err);
+        console.error("Error creating audio URL:", err);
       }
     }
-  }, [base64Data, playbackRate, preservesPitch]);
+  }, [base64Data]);
 
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackRate;
-      // @ts-ignore
-      audioRef.current.preservesPitch = preservesPitch;
     }
-  }, [playbackRate, preservesPitch]);
+  }, [playbackRate]);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -110,7 +111,7 @@ export const MiniAudioPlayer: React.FC<MiniAudioPlayerProps> = ({ base64Data }) 
       </div>
 
       <div className="flex items-center gap-1 bg-slate-200/50 dark:bg-slate-700/50 p-0.5 rounded-lg border border-slate-300/50 dark:border-slate-600/50 shrink-0">
-        {[0.5, 1.0, 1.5, 2.0, 4.0, 10.0].map((rate) => (
+        {[0.5, 1.0, 1.5, 2.0].map((rate) => (
           <button
             key={rate}
             onClick={() => setPlaybackRate(rate)}
@@ -119,14 +120,6 @@ export const MiniAudioPlayer: React.FC<MiniAudioPlayerProps> = ({ base64Data }) 
             {rate}x
           </button>
         ))}
-        <div className="w-px h-3 bg-slate-300 dark:bg-slate-600 mx-0.5" />
-        <button
-          onClick={() => setPreservesPitch(!preservesPitch)}
-          className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition-all ${preservesPitch ? 'bg-blue-500 text-white' : 'text-slate-500'}`}
-          title="Preserve Pitch"
-        >
-          P
-        </button>
       </div>
 
       <button
