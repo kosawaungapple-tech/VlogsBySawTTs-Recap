@@ -285,7 +285,8 @@ export default function App() {
         setToast({ message: 'Welcome Admin Saw!', type: 'success' });
         setTimeout(() => {
           setToast(null);
-          window.location.pathname = '/vbs-admin';
+          window.history.pushState({}, '', '/vbs-admin');
+          window.dispatchEvent(new PopStateEvent('popstate'));
         }, 1500);
         return;
       }

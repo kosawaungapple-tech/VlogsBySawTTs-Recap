@@ -21,7 +21,13 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-[#020617]/80 backdrop-blur-md transition-colors duration-300">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div 
+          className="flex items-center gap-2 cursor-pointer"
+          onClick={() => {
+            window.history.pushState({}, '', '/');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+        >
           <div className="w-10 h-10 bg-brand-purple rounded-xl flex items-center justify-center shadow-lg shadow-brand-purple/20">
             <Mic2 className="text-white w-6 h-6" />
           </div>
@@ -47,7 +53,10 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2 sm:gap-3">
               {isAdmin && (
                 <button 
-                  onClick={() => window.location.pathname = '/vbs-admin'}
+                  onClick={() => {
+                    window.history.pushState({}, '', '/vbs-admin');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
                   className="px-2 py-1 sm:px-3 sm:py-1.5 bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple border border-brand-purple/20 dark:border-brand-purple/30 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase hover:bg-brand-purple hover:text-white transition-all"
                 >
                   Admin
