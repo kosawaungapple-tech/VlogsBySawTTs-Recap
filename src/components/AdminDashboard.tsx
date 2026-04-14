@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
-  ShieldCheck, 
-  Shield,
+  Shield, 
   UserPlus, 
   Trash2, 
   CheckCircle2, 
@@ -12,10 +11,10 @@ import {
   Key,
   Calendar,
   User,
-  Mic2,
   AlertCircle,
   RefreshCw,
   Lock,
+  LogOut,
   Settings,
   Database,
   Send,
@@ -23,32 +22,38 @@ import {
   EyeOff,
   Save,
   Languages,
-  Edit3
+  Edit3,
+  Check,
+  Wand2,
+  Copy
 } from 'lucide-react';
-import { AuthorizedUser, User as RegisteredUser, SystemConfig, PronunciationRule, GlobalSettings } from '../types';
-import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, updateDoc, handleFirestoreError, OperationType, getDoc, auth, googleProvider, signInWithPopup } from '../firebase';
+import { AuthorizedUser, User as RegisteredUser, SystemConfig, PronunciationRule } from '../types';
+import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, updateDoc, handleFirestoreError, OperationType, getDoc, auth } from '../firebase';
 import { Toast, ToastType } from './Toast';
-import { Modal, ModalType } from './Modal';
 
 interface AdminDashboardProps {
   isAuthReady: boolean;
-  onAdminLogin?: (code: string) => void;
+  isAdmin: boolean;
+  isSessionSynced: boolean;
+  onLogout: () => void;
+  onConfigUpdate?: (config: SystemConfig) => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onAdminLogin }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, isAdmin, isSessionSynced, onLogout, onConfigUpdate }) => {
   const [authorizedUsers, setAuthorizedUsers] = useState<AuthorizedUser[]>([]);
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUsersLoading, setIsUsersLoading] = useState(true);
   const [newId, setNewId] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newNote, setNewNote] = useState('');
-  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
   const [newExpiryDate, setNewExpiryDate] = useState('');
+  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState<string | null>(null);
   const [isVerifyingUser, setIsVerifyingUser] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
@@ -57,10 +62,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
     isVisible: false
   });
   
-  // Admin Auth Protection
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminIdInput, setAdminIdInput] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'system' | 'rules'>('users');
 
   // System Settings State
@@ -70,17 +71,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
     firebase_auth_domain: '',
     firebase_app_id: '',
     telegram_bot_token: '',
-    telegram_chat_id: ''
-  });
-  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
-    allow_admin_keys: false,
-    total_generations: 0,
-    api_keys: ['']
+    telegram_chat_id: '',
+    rapidapi_key: '',
+    gemini_api_key: '',
+    openai_api_key: '',
+    system_live: true
   });
   const [isSavingSystem, setIsSavingSystem] = useState(false);
-  const [isSavingKeys, setIsSavingKeys] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSystemLoading, setIsSystemLoading] = useState(true);
   const [showSecrets, setShowSecrets] = useState(false);
+  const [showRapidKey, setShowRapidKey] = useState(false);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showOpenAIKey, setShowOpenAIKey] = useState(false);
 
   // Pronunciation Rules State
   const [rules, setRules] = useState<PronunciationRule[]>([]);
@@ -90,138 +93,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
   const [isDeletingRule, setIsDeletingRule] = useState<string | null>(null);
   const [isRulesLoading, setIsRulesLoading] = useState(true);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [isSessionSynced, setIsSessionSynced] = useState(false);
 
-  // Modal State
-  const [modal, setModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    type: ModalType;
-    confirmText?: string;
-    cancelText?: string;
-    placeholder?: string;
-    defaultValue?: string;
-    inputType?: 'text' | 'password' | 'date';
-    onConfirm?: (value?: string) => void;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    type: 'alert',
-  });
+  useEffect(() => {
+    // Authentication is now handled by the parent App component
+    // This component is only rendered if the user is authenticated as admin
+  }, []);
 
-  const openModal = (config: Partial<Omit<typeof modal, 'isOpen'>> & { title: string; message: string }) => {
-    setModal({
-      isOpen: true,
-      title: config.title,
-      message: config.message,
-      type: config.type || 'alert',
-      confirmText: config.confirmText || 'Confirm',
-      cancelText: config.cancelText || 'Cancel',
-      placeholder: config.placeholder || 'Enter value...',
-      defaultValue: config.defaultValue || '',
-      inputType: config.inputType || 'text',
-      onConfirm: config.onConfirm,
+  const formatDate = (date: any) => {
+    if (!date) return 'မရှိပါ';
+    try {
+      if (date && typeof date === 'object' && 'toDate' in date) {
+        return date.toDate().toLocaleString('my-MM');
+      }
+      return new Date(date).toLocaleString('my-MM');
+    } catch (e) {
+      return 'မှားယွင်းသော ရက်စွဲ';
+    }
+  };
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const length = Math.floor(Math.random() * 3) + 6; // 6 to 8 characters
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewId(result);
+    setToast({
+      message: 'စကားဝှက် အသစ် ထုတ်ပေးလိုက်ပါပြီ! 🪄',
+      type: 'success',
+      isVisible: true
     });
   };
 
-  useEffect(() => {
-    const savedAdminAuth = localStorage.getItem('vbs_admin_auth');
-    if (savedAdminAuth === 'saw_vlogs_2026') {
-      setIsAuthenticated(true);
-      
-      // Ensure session is synced on mount if already authenticated
-      if (isAuthReady && auth.currentUser) {
-        setDoc(doc(db, 'sessions', auth.currentUser.uid), {
-          accessCode: 'saw_vlogs_2026',
-          createdAt: new Date().toISOString()
-        })
-        .then(() => {
-          setIsSessionSynced(true);
-          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
-        })
-        .catch(err => {
-          console.error('Failed to sync admin session on mount:', err);
-          // Still set synced if it's a permission error on the session itself (unlikely)
-          // but we want to try listing anyway if we think we are admin
-          setIsSessionSynced(true); 
-          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
-        });
-      } else if (isAuthReady) {
-        setIsSessionSynced(true);
-        if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
-      }
-    }
-  }, [isAuthReady]);
-
-  const formatDate = (date: any) => {
-    if (!date) return 'N/A';
-    try {
-      if (date && typeof date === 'object' && 'toDate' in date) {
-        return date.toDate().toLocaleString();
-      }
-      return new Date(date).toLocaleString();
-    } catch (e) {
-      return 'Invalid Date';
-    }
+  const copyToClipboard = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setToast({
+      message: 'ကော်ပီကူးယူပြီးပါပြီ! 📋',
+      type: 'success',
+      isVisible: true
+    });
   };
 
-  const handleAdminAuth = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setAuthError(null);
-    
-    if (adminIdInput === 'saw_vlogs_2026') {
-      setIsAuthenticated(true);
-      localStorage.setItem('vbs_admin_auth', 'saw_vlogs_2026');
-      localStorage.setItem('vbs_access_granted', 'true');
-      localStorage.setItem('vbs_access_code', 'saw_vlogs_2026');
-      
-      // Sync session for security rules
-      if (auth.currentUser) {
-        try {
-          await setDoc(doc(db, 'sessions', auth.currentUser.uid), {
-            accessCode: 'saw_vlogs_2026',
-            createdAt: new Date().toISOString()
-          });
-          console.log('Admin session synced successfully.');
-          setIsSessionSynced(true);
-          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
-        } catch (e) {
-          console.error('Failed to sync admin session:', e);
-          setIsSessionSynced(true); // Proceed anyway
-          if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
-        }
-      } else {
-        setIsSessionSynced(true);
-        if (onAdminLogin) onAdminLogin('saw_vlogs_2026');
-      }
-      
-      setToast({
-        message: 'Admin Access Granted! 🛡️',
-        type: 'success',
-        isVisible: true
-      });
-    } else {
-      setAuthError("Unauthorized Access: Admin Only");
-      setToast({
-        message: 'Unauthorized Access: Admin Only',
-        type: 'error',
-        isVisible: true
-      });
-    }
-  };
-
-  const handleAdminLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('vbs_admin_auth');
-  };
 
   useEffect(() => {
-    if (!isAuthenticated || !isAuthReady || !isSessionSynced) return;
+    if (!isAuthReady || !isSessionSynced) return;
 
-    const q = query(collection(db, 'vlogs_users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Listen for Access Codes (users)
+    const qAuth = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribeAuth = onSnapshot(qAuth, (snapshot) => {
       const users = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -229,18 +150,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
       setAuthorizedUsers(users);
       setIsLoading(false);
     }, (err) => {
+      console.error('Failed to load authorized users (Silent Fallback):', err);
       setIsLoading(false);
-      handleFirestoreError(err, OperationType.LIST, 'vlogs_users');
     });
 
-    return () => unsubscribe();
-  }, [isAuthenticated, isAuthReady, isSessionSynced]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !isAuthReady || !isSessionSynced) return;
-
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Listen for Registered Users (profiles) - This might fail if not admin in Firestore
+    const qReg = query(collection(db, 'profiles'), orderBy('createdAt', 'desc'));
+    const unsubscribeReg = onSnapshot(qReg, (snapshot) => {
       const users = snapshot.docs.map(doc => ({
         uid: doc.id,
         ...doc.data()
@@ -248,15 +164,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
       setRegisteredUsers(users);
       setIsUsersLoading(false);
     }, (err) => {
+      console.error('Failed to load registered users (Silent Fallback):', err);
       setIsUsersLoading(false);
-      handleFirestoreError(err, OperationType.LIST, 'users');
     });
 
-    return () => unsubscribe();
-  }, [isAuthenticated, isAuthReady, isSessionSynced]);
+    return () => {
+      unsubscribeAuth();
+      unsubscribeReg();
+    };
+  }, [isAuthReady, isSessionSynced]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isAuthReady || !isSessionSynced) return;
+    if (!isAuthReady) return;
 
     const unsubscribe = onSnapshot(collection(db, 'globalRules'), (snapshot) => {
       const fetchedRules = snapshot.docs.map(doc => ({
@@ -264,6 +183,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
         ...doc.data()
       })) as PronunciationRule[];
       setRules(fetchedRules);
+      localStorage.setItem('vbs_global_rules', JSON.stringify(fetchedRules));
       setIsRulesLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'globalRules');
@@ -271,7 +191,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
     });
 
     return () => unsubscribe();
-  }, [isAuthenticated, isAuthReady, isSessionSynced]);
+  }, [isAuthReady]);
 
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,26 +204,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
           original: newRuleOriginal.trim(),
           replacement: newRuleReplacement.trim()
         });
-        setToast({ message: 'Rule updated successfully!', type: 'success', isVisible: true });
-      } else {
-        const ruleId = `rule_${Date.now()}`;
-        await setDoc(doc(db, 'globalRules', ruleId), {
-          original: newRuleOriginal.trim(),
-          replacement: newRuleReplacement.trim(),
-          createdAt: new Date().toISOString()
-        });
-        setToast({ message: 'Rule added successfully!', type: 'success', isVisible: true });
-      }
-      setNewRuleOriginal('');
-      setNewRuleReplacement('');
-      setEditingRuleId(null);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, editingRuleId ? `globalRules/${editingRuleId}` : 'globalRules');
-      setToast({ message: editingRuleId ? 'Failed to update rule' : 'Failed to add rule', type: 'error', isVisible: true });
-    } finally {
-      setIsSavingRule(false);
+        setToast({ message: 'စည်းမျဉ်းကို ပြင်ဆင်ပြီးပါပြီ!', type: 'success', isVisible: true });
+    } else {
+      const ruleId = `rule_${Date.now()}`;
+      await setDoc(doc(db, 'globalRules', ruleId), {
+        original: newRuleOriginal.trim(),
+        replacement: newRuleReplacement.trim(),
+        createdAt: new Date().toISOString()
+      });
+      setToast({ message: 'စည်းမျဉ်းအသစ် ထည့်သွင်းပြီးပါပြီ!', type: 'success', isVisible: true });
     }
-  };
+    setNewRuleOriginal('');
+    setNewRuleReplacement('');
+    setEditingRuleId(null);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, editingRuleId ? `globalRules/${editingRuleId}` : 'globalRules');
+    setToast({ message: editingRuleId ? 'စည်းမျဉ်း ပြင်ဆင်ရန် မအောင်မြင်ပါ။' : 'စည်းမျဉ်းအသစ် ထည့်ရန် မအောင်မြင်ပါ။', type: 'error', isVisible: true });
+  } finally {
+    setIsSavingRule(false);
+  }
+};
 
   const handleEditRule = (rule: PronunciationRule) => {
     setNewRuleOriginal(rule.original);
@@ -320,118 +240,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
   };
 
   const handleDeleteRule = async (id: string) => {
-    openModal({
-      title: 'Delete Rule',
-      message: 'Are you sure you want to delete this pronunciation rule?',
-      type: 'confirm',
-      confirmText: 'Delete',
-      onConfirm: async () => {
-        setIsDeletingRule(id);
-        try {
-          await deleteDoc(doc(db, 'globalRules', id));
-          setToast({ message: 'Rule deleted', type: 'success', isVisible: true });
-        } catch (error) {
-          handleFirestoreError(error, OperationType.DELETE, `globalRules/${id}`);
-          setToast({ message: 'Failed to delete rule', type: 'error', isVisible: true });
-        } finally {
-          setIsDeletingRule(null);
-        }
-      }
-    });
+    if (!window.confirm('ဤစည်းမျဉ်းကို ဖျက်ရန် သေချာပါသလား?')) return;
+    setIsDeletingRule(id);
+    try {
+      await deleteDoc(doc(db, 'globalRules', id));
+      setToast({ message: 'စည်းမျဉ်းကို ဖျက်လိုက်ပါပြီ', type: 'success', isVisible: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `globalRules/${id}`);
+      setToast({ message: 'စည်းမျဉ်း ဖျက်ရန် မအောင်မြင်ပါ။', type: 'error', isVisible: true });
+    } finally {
+      setIsDeletingRule(null);
+    }
   };
 
+  // Listen for System Config from Firestore
   useEffect(() => {
-    if (!isAuthenticated || !isAuthReady) return;
-
-    const fetchSystemConfig = async () => {
-      setIsSystemLoading(true);
-      try {
-        const docRef = doc(db, 'system_config', 'main');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSystemConfig(docSnap.data() as SystemConfig);
-        }
-
-        const globalRef = doc(db, 'settings', 'global');
-        const globalSnap = await getDoc(globalRef);
-        if (globalSnap.exists()) {
-          const data = globalSnap.data() as GlobalSettings;
-          setGlobalSettings({
-            ...data,
-            api_keys: data.api_keys || ['']
-          });
-        }
-      } catch (err) {
-        console.error('Failed to fetch system config:', err);
-      } finally {
-        setIsSystemLoading(false);
+    if (!isAuthReady) return;
+    
+    setIsSystemLoading(true);
+    const unsubscribe = onSnapshot(doc(db, 'config', 'system_config'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSystemConfig(snapshot.data() as SystemConfig);
       }
-    };
+      setIsSystemLoading(false);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'config/system_config');
+      setIsSystemLoading(false);
+    });
+    
+    return () => unsubscribe();
+  }, [isAuthReady]);
 
-    fetchSystemConfig();
-  }, [isAuthenticated, isAuthReady]);
-
-  const handleSaveSystemConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveSystemConfig = async () => {
     setIsSavingSystem(true);
+    setSaveSuccess(false);
+    
     try {
-      await setDoc(doc(db, 'system_config', 'main'), {
-        ...systemConfig,
-        updatedAt: new Date().toISOString()
-      });
+      // Save directly to Firestore
+      await setDoc(doc(db, 'config', 'system_config'), systemConfig);
       
-      // Save to localStorage for immediate effect on next reload
-      localStorage.setItem('vbs_system_config', JSON.stringify(systemConfig));
+      if (onConfigUpdate) {
+        onConfigUpdate(systemConfig);
+      }
       
+      setSaveSuccess(true);
       setToast({
-        message: 'System Settings Saved Successfully! 🚀',
+        message: 'ပြင်ဆင်ချက်များ သိမ်းဆည်းပြီးပါပြီ!',
         type: 'success',
         isVisible: true
       });
+      
+      // Reset success state and hide toast
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setToast(prev => ({ ...prev, isVisible: false }));
+      }, 3000);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'system_config/main');
+      console.error('Failed to save system settings to Firestore:', err);
+      handleFirestoreError(err, OperationType.WRITE, 'config/system_config');
       setToast({
-        message: 'Failed to save system settings.',
+        message: 'သိမ်းဆည်းရန် အဆင်မပြေပါ၊ ပြန်လည်ကြိုးစားပါ။',
         type: 'error',
         isVisible: true
       });
     } finally {
       setIsSavingSystem(false);
     }
-  };
-
-  const handleSaveGlobalSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingKeys(true);
-    try {
-      await setDoc(doc(db, 'settings', 'global'), {
-        ...globalSettings,
-        updatedAt: new Date().toISOString()
-      });
-      setToast({
-        message: 'API Key Settings Saved! 🔑',
-        type: 'success',
-        isVisible: true
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
-      setToast({
-        message: 'Failed to save API key settings.',
-        type: 'error',
-        isVisible: true
-      });
-    } finally {
-      setIsSavingKeys(false);
-    }
-  };
-
-  const generateRandomPassword = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setNewPassword(password);
   };
 
   const handleCreateId = async (e: React.FormEvent) => {
@@ -442,33 +316,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
 
     try {
       const accessCode = newId.trim();
-      const newAuthorizedUser = {
-        id: accessCode, // Include id
-        userId: accessCode, // Explicitly set userId as requested
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        note: newNote.trim(),
-        role: newRole,
-        password: newPassword.trim() || null,
-        expiryDate: newExpiryDate || null
-      };
+      
+      if (editingUserId) {
+        // Update existing user in Firestore
+        try {
+          // If ID changed, we need to delete old and create new, or just update if ID same
+          if (editingUserId !== accessCode) {
+            await deleteDoc(doc(db, 'users', editingUserId));
+            const updatedUser = {
+              id: accessCode,
+              password: newPassword.trim() || undefined,
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              note: newNote.trim(),
+              role: newRole,
+              expiryDate: newExpiryDate || undefined
+            };
+            await setDoc(doc(db, 'users', accessCode), updatedUser);
+          } else {
+            await updateDoc(doc(db, 'users', accessCode), {
+              password: newPassword.trim() || undefined,
+              note: newNote.trim(),
+              role: newRole,
+              expiryDate: newExpiryDate || undefined
+            });
+          }
+        } catch (fsErr) {
+          console.error('Firestore update failed:', fsErr);
+          throw fsErr;
+        }
+        
+        setToast({
+          message: 'သက်တမ်းတိုးခြင်း အောင်မြင်ပါသည်။ ✨',
+          type: 'success',
+          isVisible: true
+        });
+        setEditingUserId(null);
+      } else {
+        // Create new user in Firestore
+        const newAuthorizedUser: AuthorizedUser = {
+          id: accessCode,
+          password: newPassword.trim() || undefined,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          note: newNote.trim(),
+          role: newRole,
+          expiryDate: newExpiryDate || undefined
+        };
 
-      await setDoc(doc(db, 'vlogs_users', accessCode), newAuthorizedUser);
+        try {
+          await setDoc(doc(db, 'users', accessCode), newAuthorizedUser);
+        } catch (fsErr) {
+          console.error('Firestore create failed:', fsErr);
+          throw fsErr;
+        }
+        
+        setToast({
+          message: 'အသုံးပြုသူ ID အသစ် ဖန်တီးပြီးပါပြီ! 🎉',
+          type: 'success',
+          isVisible: true
+        });
+      }
       
       setNewId('');
-      setNewNote('');
       setNewPassword('');
+      setNewNote('');
       setNewExpiryDate('');
       setNewRole('user');
-      setToast({
-        message: 'User ID Created Successfully! 🎉',
-        type: 'success',
-        isVisible: true
-      });
     } catch (err: any) {
-      handleFirestoreError(err, OperationType.CREATE, `vlogs_users/${newId.trim()}`);
       setToast({
-        message: 'Error: Could not create ID. Please try again.',
+        message: editingUserId ? 'ပြင်ဆင်ရန် မအောင်မြင်ပါ။' : 'အမှားအယွင်းရှိပါသည် - ID ဖန်တီး၍မရပါ။',
         type: 'error',
         isVisible: true
       });
@@ -477,127 +394,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
     }
   };
 
-  const handleUpdatePassword = async (id: string) => {
-    openModal({
-      title: 'Update Password',
-      message: 'Enter a new password for this user:',
-      type: 'prompt',
-      inputType: 'password',
-      placeholder: 'New password...',
-      confirmText: 'Update',
-      onConfirm: async (password) => {
-        if (!password) return;
-        try {
-          await updateDoc(doc(db, 'vlogs_users', id), {
-            password: password.trim() || null
-          });
-          setToast({
-            message: 'User Password Updated!',
-            type: 'success',
-            isVisible: true
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
-          setToast({
-            message: 'Failed to update user password.',
-            type: 'error',
-            isVisible: true
-          });
-        }
-      }
-    });
-  };
-
-  const handleExtendExpiry = async (id: string, currentExpiry: string | undefined) => {
-    try {
-      const now = new Date();
-      let baseDate = now;
-      
-      if (currentExpiry) {
-        const current = new Date(currentExpiry);
-        if (current > now) {
-          baseDate = current;
-        }
-      }
-      
-      const newExpiry = new Date(baseDate);
-      newExpiry.setDate(newExpiry.getDate() + 30);
-      
-      await updateDoc(doc(db, 'vlogs_users', id), {
-        expiryDate: newExpiry.toISOString()
-      });
-      
-      setToast({
-        message: 'Subscription Extended 30 Days! 📅',
-        type: 'success',
-        isVisible: true
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
-      setToast({
-        message: 'Failed to extend subscription.',
-        type: 'error',
-        isVisible: true
-      });
+  const handleEditId = (user: AuthorizedUser) => {
+    setEditingUserId(user.id);
+    setNewId(user.id);
+    setNewPassword(user.password || '');
+    setNewNote(user.note || '');
+    setNewRole(user.role || 'user');
+    
+    // Format date for input[type="date"]
+    if (user.expiryDate) {
+      const date = new Date(user.expiryDate);
+      const formattedDate = date.toISOString().split('T')[0];
+      setNewExpiryDate(formattedDate);
+    } else {
+      setNewExpiryDate('');
     }
+    
+    // Scroll to top of form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSetCustomExpiry = async (id: string) => {
-    openModal({
-      title: 'Set Expiry Date',
-      message: 'Enter custom expiry date (YYYY-MM-DD):',
-      type: 'prompt',
-      inputType: 'date',
-      confirmText: 'Set Expiry',
-      onConfirm: async (dateStr) => {
-        if (!dateStr) return;
-        
-        try {
-          const date = new Date(dateStr);
-          if (isNaN(date.getTime())) {
-            openModal({
-              title: 'Invalid Date',
-              message: 'Invalid date format. Please use YYYY-MM-DD.',
-              type: 'error'
-            });
-            return;
-          }
-          
-          await updateDoc(doc(db, 'vlogs_users', id), {
-            expiryDate: date.toISOString()
-          });
-          
-          setToast({
-            message: 'Custom Expiry Date Set! 📅',
-            type: 'success',
-            isVisible: true
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
-          setToast({
-            message: 'Failed to set custom expiry date.',
-            type: 'error',
-            isVisible: true
-          });
-        }
-      }
-    });
+  const handleCancelEdit = () => {
+    setEditingUserId(null);
+    setNewId('');
+    setNewPassword('');
+    setNewNote('');
+    setNewExpiryDate('');
+    setNewRole('user');
   };
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
     try {
-      await updateDoc(doc(db, 'vlogs_users', id), {
+      await updateDoc(doc(db, 'users', id), {
         isActive: !currentStatus
       });
+
       setToast({
-        message: 'User Status Updated!',
+        message: 'အသုံးပြုသူ အခြေအနေကို ပြောင်းလဲလိုက်ပါပြီ!',
         type: 'success',
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
-        message: 'Failed to update user status.',
+        message: 'အသုံးပြုသူ အခြေအနေ ပြောင်းလဲရန် မအောင်မြင်ပါ။',
         type: 'error',
         isVisible: true
       });
@@ -606,18 +445,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
 
   const handleToggleRole = async (id: string, currentRole: 'admin' | 'user') => {
     try {
-      await updateDoc(doc(db, 'vlogs_users', id), {
-        role: currentRole === 'admin' ? 'user' : 'admin'
+      const nextRole = currentRole === 'admin' ? 'user' : 'admin';
+      
+      await updateDoc(doc(db, 'users', id), {
+        role: nextRole
       });
+
       setToast({
-        message: 'User Role Updated!',
+        message: 'အသုံးပြုသူ အဆင့်ကို ပြောင်းလဲလိုက်ပါပြီ!',
         type: 'success',
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `vlogs_users/${id}`);
       setToast({
-        message: 'Failed to update user role.',
+        message: 'အသုံးပြုသူ အဆင့် ပြောင်းလဲရန် မအောင်မြင်ပါ။',
         type: 'error',
         isVisible: true
       });
@@ -625,50 +466,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
   };
 
   const handleDeleteId = async (id: string) => {
-    openModal({
-      title: 'Delete User ID',
-      message: `Are you sure you want to delete Access Code: ${id}?`,
-      type: 'confirm',
-      confirmText: 'Delete',
-      onConfirm: async () => {
-        setIsDeletingUser(id);
-        try {
-          await deleteDoc(doc(db, 'vlogs_users', id));
-          setToast({
-            message: 'User ID Deleted Successfully!',
-            type: 'success',
-            isVisible: true
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `vlogs_users/${id}`);
-          setToast({
-            message: 'Failed to delete User ID.',
-            type: 'error',
-            isVisible: true
-          });
-        } finally {
-          setIsDeletingUser(null);
-        }
-      }
-    });
+    if (!window.confirm(`Access Code: ${id} ကို ဖျက်ရန် သေချာပါသလား?`)) return;
+
+    setIsDeletingUser(id);
+    try {
+      await deleteDoc(doc(db, 'users', id));
+
+      setToast({
+        message: 'အသုံးပြုသူ ID ကို ဖျက်လိုက်ပါပြီ! 🎉',
+        type: 'success',
+        isVisible: true
+      });
+    } catch (err) {
+      setToast({
+        message: 'အသုံးပြုသူ ID ဖျက်ရန် မအောင်မြင်ပါ။',
+        type: 'error',
+        isVisible: true
+      });
+    } finally {
+      setIsDeletingUser(null);
+    }
   };
 
   const handleVerifyUser = async (uid: string) => {
     setIsVerifyingUser(uid);
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      await updateDoc(doc(db, 'profiles', uid), {
         is_verified: true,
         pending_verification: false
       });
       setToast({
-        message: 'User Verified Successfully! 🎉',
+        message: 'အသုံးပြုသူကို အတည်ပြုပြီးပါပြီ! 🎉',
         type: 'success',
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      handleFirestoreError(err, OperationType.UPDATE, `profiles/${uid}`);
       setToast({
-        message: 'Failed to verify user.',
+        message: 'အသုံးပြုသူ အတည်ပြုရန် မအောင်မြင်ပါ။',
         type: 'error',
         isVisible: true
       });
@@ -679,18 +514,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
 
   const handleToggleRegisteredUserRole = async (uid: string, currentRole: 'admin' | 'user') => {
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      await updateDoc(doc(db, 'profiles', uid), {
         role: currentRole === 'admin' ? 'user' : 'admin'
       });
       setToast({
-        message: `User role updated to ${currentRole === 'admin' ? 'user' : 'admin'}! 🎉`,
+        message: `အသုံးပြုသူအဆင့်ကို ${currentRole === 'admin' ? 'အသုံးပြုသူ' : 'အက်ဒမင်'}သို့ ပြောင်းလဲလိုက်ပါပြီ! 🎉`,
         type: 'success',
         isVisible: true
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      handleFirestoreError(err, OperationType.UPDATE, `profiles/${uid}`);
       setToast({
-        message: 'Failed to update user role.',
+        message: 'အသုံးပြုသူအဆင့် ပြောင်းလဲရန် မအောင်မြင်ပါ။',
         type: 'error',
         isVisible: true
       });
@@ -702,55 +537,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
     (u.note || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!isAuthenticated) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 px-4">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl transition-colors duration-300"
-        >
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-brand-purple/20 text-brand-purple rounded-2xl flex items-center justify-center mb-4 border border-brand-purple/20">
-              <Lock size={32} />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Admin Access</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Enter Admin ID to continue</p>
-          </div>
 
-          <form onSubmit={handleAdminAuth} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Admin ID</label>
-              <div className="relative">
-                <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                <input
-                  type="password"
-                  value={adminIdInput}
-                  onChange={(e) => setAdminIdInput(e.target.value)}
-                  placeholder="Enter Admin ID"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-4 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            {authError && (
-              <p className="text-red-500 text-xs font-bold flex items-center gap-1 px-2">
-                <AlertCircle size={12} /> {authError}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="w-full py-4 bg-brand-purple text-white rounded-2xl font-bold hover:bg-brand-purple/90 transition-all shadow-lg shadow-brand-purple/20 flex items-center justify-center gap-2"
-            >
-              <ShieldCheck size={20} /> Verify Access
-            </button>
-          </form>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -759,49 +546,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
       <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl transition-colors duration-300">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6 text-center sm:text-left">
           <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-brand-purple/20 text-brand-purple rounded-2xl flex items-center justify-center shadow-inner border border-brand-purple/20 shrink-0">
-              <ShieldCheck size={28} className="sm:w-8 sm:h-8" />
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-brand-purple/20 text-brand-purple rounded-2xl flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.3)] border border-brand-purple/20 shrink-0">
+              <Shield size={28} className="sm:w-8 sm:h-8" />
             </div>
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Admin Dashboard</h2>
-              <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1">Manage Authorized Access Codes (User IDs)</p>
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white font-mono tracking-tighter uppercase">ထိန်းချုပ်ရေးဗဟို</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs mt-1 font-mono uppercase tracking-widest">စနစ်စီမံခန့်ခွဲမှုဌာန</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto overflow-hidden">
-            <div className="flex flex-nowrap overflow-x-auto no-scrollbar bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-200 dark:border-slate-800 flex-1 sm:flex-initial">
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  window.dispatchEvent(new PopStateEvent('popstate'));
-                }}
-                className="px-3 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 whitespace-nowrap"
-              >
-                <Mic2 size={14} /> Generator
-              </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
               <button
                 onClick={() => setActiveTab('users')}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${activeTab === 'users' ? 'bg-white dark:bg-slate-800 text-brand-purple shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                className={`px-4 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 font-mono uppercase tracking-wider ${activeTab === 'users' ? 'bg-white dark:bg-slate-800 text-brand-purple shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
-                <User size={14} /> Users
+                <User size={14} /> အသုံးပြုသူများ
               </button>
               <button
                 onClick={() => setActiveTab('system')}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${activeTab === 'system' ? 'bg-white dark:bg-slate-800 text-brand-purple shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                className={`px-4 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 font-mono uppercase tracking-wider ${activeTab === 'system' ? 'bg-white dark:bg-slate-800 text-brand-purple shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
-                <Settings size={14} /> System
+                <Settings size={14} /> စနစ်ပြင်ဆင်ချက်
               </button>
               <button
                 onClick={() => setActiveTab('rules')}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${activeTab === 'rules' ? 'bg-white dark:bg-slate-800 text-brand-purple shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                className={`px-4 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 font-mono uppercase tracking-wider ${activeTab === 'rules' ? 'bg-white dark:bg-slate-800 text-brand-purple shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
-                <Languages size={14} /> Rules
+                <Languages size={14} /> စည်းမျဉ်းများ
               </button>
             </div>
             <button 
-              onClick={handleAdminLogout}
-              className="px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-100 dark:bg-slate-900/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 text-[10px] sm:text-sm font-bold transition-all whitespace-nowrap"
+              onClick={onLogout}
+              className="px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-red-500 text-[10px] font-bold transition-all flex items-center gap-2 font-mono uppercase tracking-widest hover:shadow-[0_0_15px_rgba(239,68,68,0.2)]"
             >
-              Lock
+              <LogOut size={16} /> ထွက်ရန်
             </button>
           </div>
         </div>
@@ -811,106 +589,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Create Form */}
         <div className="lg:col-span-4">
-          <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl sticky top-8 transition-colors duration-300">
+          <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl sticky top-8 transition-colors duration-300 neon-border-purple">
             <div className="flex items-center gap-3 mb-6">
               <UserPlus className="text-brand-purple" size={20} />
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Create New User ID</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white font-mono uppercase tracking-tighter">
+                {editingUserId ? 'အသုံးပြုသူ ပြင်ဆင်ရန်' : 'အသုံးပြုသူအသစ် ထည့်ရန်'}
+              </h3>
             </div>
 
             <form onSubmit={handleCreateId} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Access Code (User ID)</label>
-                <div className="relative">
-                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                  <input
-                    type="text"
-                    value={newId}
-                    onChange={(e) => setNewId(e.target.value)}
-                    placeholder="e.g. USER-12345"
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    required
-                  />
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono">ACCESS PASSWORD / PIN (အသုံးပြုသူ ID)</label>
+                <div className="relative flex gap-2">
+                  <div className="relative flex-1">
+                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                    <input
+                      type="text"
+                      value={newId}
+                      onChange={(e) => setNewId(e.target.value)}
+                      placeholder="ဥပမာ - USER-12345"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Note / Name (Optional)</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono flex justify-between items-center w-full">
+                  <span>PASSWORD (စကားဝှက်)</span>
+                  {newPassword && (
+                    <button 
+                      type="button"
+                      onClick={() => copyToClipboard(newPassword)}
+                      className="text-brand-purple hover:text-brand-purple/80 transition-colors p-1"
+                      title="Copy to clipboard"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  )}
+                </label>
+                <div className="relative flex gap-2">
+                  <div className="relative flex-1">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                    <input
+                      type="text"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="စကားဝှက် ထည့်သွင်းပါ..."
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+                      const length = Math.floor(Math.random() * 3) + 6; // 6 to 8 characters
+                      let result = '';
+                      for (let i = 0; i < length; i++) {
+                        result += chars.charAt(Math.floor(Math.random() * chars.length));
+                      }
+                      setNewPassword(result);
+                      setToast({
+                        message: 'စကားဝှက် အသစ် ထုတ်ပေးလိုက်ပါပြီ! 🪄',
+                        type: 'success',
+                        isVisible: true
+                      });
+                    }}
+                    className="px-4 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 hover:text-brand-purple hover:border-brand-purple/50 transition-all flex items-center justify-center gap-2 group shadow-sm"
+                    title="Generate Secure Password"
+                  >
+                    <Wand2 size={18} className="group-hover:rotate-12 transition-transform" />
+                    <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest">Generate</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono">မှတ်ချက် / အမည် (မထည့်လည်းရသည်)</label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                   <input
                     type="text"
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="e.g. Saw Yan Aung"
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
+                    placeholder="ဥပမာ - စောရန်အောင်"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="flex justify-between items-center px-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Password (Optional)</label>
-                  <button 
-                    type="button"
-                    onClick={generateRandomPassword}
-                    className="text-[10px] font-bold text-brand-purple hover:underline flex items-center gap-1"
-                  >
-                    <RefreshCw size={10} /> Generate
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                  <input
-                    type="text"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter or generate password"
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm font-mono text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Expiry Date (Optional)</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono">သက်တမ်းကုန်ဆုံးမည့်ရက် (Expiry Date)</label>
                 <div className="relative">
                   <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                   <input
                     type="date"
                     value={newExpiryDate}
                     onChange={(e) => setNewExpiryDate(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Initial Role</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono">အဆင့်သတ်မှတ်ချက်</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setNewRole('user')}
-                    className={`py-3 rounded-xl text-xs font-bold border transition-all ${newRole === 'user' ? 'bg-brand-purple border-brand-purple text-white' : 'bg-slate-100 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                    className={`py-3 rounded-xl text-[10px] font-bold border transition-all font-mono uppercase tracking-widest ${newRole === 'user' ? 'bg-brand-purple border-brand-purple text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]' : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                   >
-                    User
+                    အသုံးပြုသူ
                   </button>
                   <button
                     type="button"
                     onClick={() => setNewRole('admin')}
-                    className={`py-3 rounded-xl text-xs font-bold border transition-all ${newRole === 'admin' ? 'bg-brand-purple border-brand-purple text-white' : 'bg-slate-100 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                    className={`py-3 rounded-xl text-[10px] font-bold border transition-all font-mono uppercase tracking-widest ${newRole === 'admin' ? 'bg-brand-purple border-brand-purple text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]' : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                   >
-                    Admin
+                    အက်ဒမင်
                   </button>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={isSubmitting || !newId.trim()}
-                className="w-full py-4 bg-brand-purple text-white rounded-xl font-bold hover:bg-brand-purple/90 transition-all shadow-lg shadow-brand-purple/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-              >
-                {isSubmitting ? <RefreshCw size={18} className="animate-spin" /> : <Plus size={18} />}
-                Create User ID
-              </button>
+              <div className="flex flex-col gap-3">
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !newId.trim()}
+                  className="w-full py-4 bg-brand-purple text-white rounded-xl font-bold hover:bg-brand-purple/90 transition-all shadow-lg shadow-brand-purple/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 font-mono uppercase tracking-widest hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] btn-pulse"
+                >
+                  {isSubmitting ? <RefreshCw size={18} className="animate-spin" /> : (editingUserId ? <Save size={18} /> : <Plus size={18} />)}
+                  {editingUserId ? 'ပြင်ဆင်ချက်များ သိမ်းမည်' : 'အသုံးပြုသူသစ် ဖန်တီးမည်'}
+                </button>
+                
+                {editingUserId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 font-mono uppercase tracking-widest text-[10px]"
+                  >
+                    <XCircle size={14} /> မလုပ်တော့ပါ (Cancel)
+                  </button>
+                )}
+              </div>
             </form>
           </div>
         </div>
@@ -921,9 +742,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
                 <Key className="text-brand-purple" size={20} />
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Existing User IDs</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">လက်ရှိ အသုံးပြုသူ ID များ</h3>
                 <span className="px-2 py-0.5 bg-brand-purple/20 text-brand-purple border border-brand-purple/30 rounded-lg text-[9px] font-bold uppercase">
-                  {authorizedUsers.length} Total
+                  စုစုပေါင်း {authorizedUsers.length} ခု
                 </span>
               </div>
 
@@ -931,7 +752,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                 <input
                   type="text"
-                  placeholder="Search IDs or notes..."
+                  placeholder="ID သို့မဟုတ် မှတ်ချက်ဖြင့် ရှာဖွေရန်..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
@@ -948,13 +769,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-white/5">
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Access Code</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Note</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Password</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ID</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">စကားဝှက်</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">အမည်</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Role</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Expiry Date</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ဖန်တီးသည့်ရက်</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">သက်တမ်းကုန်ရက်</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">လုပ်ဆောင်ချက် (Actions)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
@@ -964,103 +785,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                           <span className="font-mono text-sm text-slate-900 dark:text-white bg-slate-100 dark:bg-white/5 px-2 py-1 rounded border border-slate-200 dark:border-white/10">{u.id}</span>
                         </td>
                         <td className="px-4 py-4">
+                          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{u.password || '—'}</span>
+                        </td>
+                        <td className="px-4 py-4">
                           <span className="text-sm text-slate-700 dark:text-slate-300">{u.note || '—'}</span>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
-                              {u.password ? '••••••••' : '—'}
-                            </span>
-                            {u.password && (
-                              <button 
-                                onClick={() => openModal({
-                                  title: 'User Password',
-                                  message: `Password for ${u.id}: ${u.password || 'No password set'}`,
-                                  type: 'info'
-                                })}
-                                className="text-slate-400 hover:text-brand-purple"
-                                title="View Password"
-                              >
-                                <Eye size={12} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${u.role === 'admin' ? 'bg-brand-purple/20 text-brand-purple border-brand-purple/30' : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-white/10'}`}>
-                            {u.role || 'user'}
+                            {u.role === 'admin' ? 'အက်ဒမင်' : 'အသုံးပြုသူ'}
                           </span>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                              <Calendar size={12} />
-                              {u.expiryDate ? (
-                                <span className={new Date(u.expiryDate) < new Date() ? 'text-red-500 font-bold' : 'text-emerald-500'}>
-                                  {new Date(u.expiryDate).toLocaleDateString()}
-                                </span>
-                              ) : (
-                                <span>No Expiry</span>
-                              )}
-                            </div>
-                            {u.expiryDate && new Date(u.expiryDate) < new Date() && (
-                              <span className="text-[9px] text-red-500 font-bold uppercase tracking-tighter">Expired</span>
-                            )}
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <Calendar size={12} />
+                            {new Date(u.createdAt).toLocaleDateString()}
                           </div>
                         </td>
                         <td className="px-4 py-4">
-                          {u.isActive ? (
-                            <span className="flex items-center gap-1.5 text-emerald-500 text-[10px] font-bold uppercase">
-                              <CheckCircle2 size={12} /> Active
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1.5 text-red-500 text-[10px] font-bold uppercase">
-                              <XCircle size={12} /> Deactivated
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <Calendar size={12} />
+                            {u.expiryDate ? new Date(u.expiryDate).toLocaleDateString() : 'မရှိပါ'}
+                          </div>
                         </td>
                         <td className="px-4 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1">
                             <button
-                              onClick={() => handleExtendExpiry(u.id, u.expiryDate)}
-                              className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all"
-                              title="Extend 30 Days"
-                            >
-                              <Calendar size={16} />
-                            </button>
-                            <button
-                              onClick={() => handleSetCustomExpiry(u.id)}
+                              onClick={() => handleEditId(u)}
                               className="p-2 text-slate-500 hover:text-brand-purple hover:bg-brand-purple/10 rounded-lg transition-all"
-                              title="Set Custom Expiry"
+                              title="ပြင်ဆင်မည်"
                             >
                               <Edit3 size={16} />
                             </button>
                             <button
-                              onClick={() => handleUpdatePassword(u.id)}
-                              className="p-2 text-slate-500 hover:text-brand-purple hover:bg-brand-purple/10 rounded-lg transition-all"
-                              title="Update Password"
-                            >
-                              <Lock size={16} />
-                            </button>
-                            <button
                               onClick={() => handleToggleRole(u.id, u.role || 'user')}
                               className="p-2 text-slate-500 hover:text-brand-purple hover:bg-brand-purple/10 rounded-lg transition-all"
-                              title="Toggle Role"
+                              title="အဆင့်ပြောင်းရန်"
                             >
-                              <ShieldCheck size={16} />
+                              <Shield size={16} />
                             </button>
                             <button
                               onClick={() => handleToggleStatus(u.id, u.isActive)}
                               className={`p-2 rounded-lg transition-all ${u.isActive ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
-                              title={u.isActive ? 'Deactivate' : 'Activate'}
+                              title={u.isActive ? 'ပိတ်ရန်' : 'ဖွင့်ရန်'}
                             >
                               <RefreshCw size={16} />
                             </button>
                             <button
                               onClick={() => handleDeleteId(u.id)}
                               disabled={isDeletingUser === u.id}
-                              className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
-                              title="Delete"
+                              className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
+                              title="ဖျက်မည်"
                             >
                               {isDeletingUser === u.id ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
                             </button>
@@ -1071,7 +845,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                     {filteredUsers.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-10 text-center text-slate-500 italic text-sm">
-                          No Access Codes found matching your search.
+                          ရှာဖွေမှုနှင့် ကိုက်ညီသော အသုံးပြုသူ မရှိပါ။
                         </td>
                       </tr>
                     )}
@@ -1086,9 +860,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
                 <User className="text-brand-purple" size={20} />
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Registered Users</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">မှတ်ပုံတင်ထားသော အသုံးပြုသူများ</h3>
                 <span className="px-2 py-0.5 bg-brand-purple/20 text-brand-purple border border-brand-purple/30 rounded-lg text-[10px] font-bold uppercase">
-                  {registeredUsers.length} Total
+                  စုစုပေါင်း {registeredUsers.length} ဦး
                 </span>
               </div>
             </div>
@@ -1102,12 +876,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-white/5">
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">User</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Role</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Verification</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Joined</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Last Activity</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">အသုံးပြုသူ</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">အဆင့်</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">အတည်ပြုချက်</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">စတင်ဝင်ရောက်သည့်ရက်</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">နောက်ဆုံးဝင်ရောက်မှု</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">လုပ်ဆောင်ချက်</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
@@ -1121,21 +895,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                         </td>
                         <td className="px-4 py-4">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${user.role === 'admin' ? 'bg-brand-purple/20 text-brand-purple border-brand-purple/30' : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-white/10'}`}>
-                            {user.role}
+                            {user.role === 'admin' ? 'အက်ဒမင်' : 'အသုံးပြုသူ'}
                           </span>
                         </td>
                         <td className="px-4 py-4">
                           {user.is_verified ? (
                             <span className="flex items-center gap-1.5 text-emerald-500 text-[10px] font-bold uppercase">
-                              <CheckCircle2 size={12} /> Verified
+                              <CheckCircle2 size={12} /> အတည်ပြုပြီး
                             </span>
                           ) : user.pending_verification ? (
                             <span className="flex items-center gap-1.5 text-amber-500 text-[10px] font-bold uppercase">
-                              <RefreshCw size={12} className="animate-spin" /> Pending
+                              <RefreshCw size={12} className="animate-spin" /> စောင့်ဆိုင်းဆဲ
                             </span>
                           ) : (
                             <span className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase">
-                              <XCircle size={12} /> Not Verified
+                              <XCircle size={12} /> အတည်မပြုရသေး
                             </span>
                           )}
                         </td>
@@ -1154,9 +928,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                             <button
                               onClick={() => handleToggleRegisteredUserRole(user.uid, user.role)}
                               className="p-2 text-slate-500 hover:text-brand-purple hover:bg-brand-purple/10 rounded-lg transition-all"
-                              title="Toggle Role"
+                              title="အဆင့်ပြောင်းရန်"
                             >
-                              <ShieldCheck size={16} />
+                              <Shield size={16} />
                             </button>
                             {!user.is_verified && (
                               <button
@@ -1165,7 +939,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                                 className="px-3 py-1.5 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white border border-emerald-500/20 rounded-lg text-[10px] font-bold uppercase transition-all disabled:opacity-50 flex items-center gap-2"
                               >
                                 {isVerifyingUser === user.uid && <RefreshCw size={12} className="animate-spin" />}
-                                Verify
+                                အတည်ပြုမည်
                               </button>
                             )}
                           </div>
@@ -1175,7 +949,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
                     {registeredUsers.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-10 text-center text-slate-500 italic text-sm">
-                          No registered users found.
+                          မှတ်ပုံတင်ထားသော အသုံးပြုသူ မရှိသေးပါ။
                         </td>
                       </tr>
                     )}
@@ -1186,350 +960,250 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isAuthReady, onA
           </div>
         </div>
       </div>
-      )}
+    )}
 
       {activeTab === 'system' && (
-        <div className="max-w-4xl mx-auto w-full space-y-8">
-          {/* API Key Rotation & Switch */}
-          <div className="bg-white/50 backdrop-blur dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl transition-colors duration-300">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 bg-brand-purple/20 text-brand-purple rounded-xl flex items-center justify-center border border-brand-purple/20">
-                <Key size={20} />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">API Key Rotation & Switch</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-xs">Manage multiple keys for auto-switching on rate limits</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveGlobalSettings} className="space-y-6">
-              <div className="bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Allow Users to use Admin API Keys</h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">If ON, the system uses rotated Admin keys. If OFF, users must provide their own.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setGlobalSettings({ ...globalSettings, allow_admin_keys: !globalSettings.allow_admin_keys })}
-                    className={`w-12 h-6 rounded-full transition-all relative ${globalSettings.allow_admin_keys ? 'bg-brand-purple' : 'bg-slate-300 dark:bg-slate-700'}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${globalSettings.allow_admin_keys ? 'left-7' : 'left-1'}`} />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Google AI Studio API Keys (One per line)</label>
-                  <textarea
-                    value={globalSettings.api_keys?.join('\n')}
-                    onChange={(e) => setGlobalSettings({ ...globalSettings, api_keys: e.target.value.split('\n') })}
-                    placeholder="Paste your API keys here, one per line..."
-                    className="w-full h-32 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all resize-none"
-                  />
-                  <p className="text-[10px] text-slate-500 italic px-1">
-                    The system will automatically switch to the next key if a 429 (Rate Limit) error occurs.
-                  </p>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSavingKeys}
-                  className="w-full py-3.5 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-purple/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isSavingKeys ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}
-                  Save API Key Settings
-                </button>
-              </div>
-            </form>
+        <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl transition-colors duration-300 neon-border-blue">
+          <div className="flex items-center gap-3 mb-8">
+            <Settings className="text-brand-purple" size={24} />
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white font-mono uppercase tracking-tighter">စနစ်ဆိုင်ရာ API Keys များ</h3>
           </div>
 
-          <div className="bg-white/50 backdrop-blur dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl transition-colors duration-300">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-brand-purple/20 text-brand-purple rounded-xl flex items-center justify-center border border-brand-purple/20">
-                  <Settings size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Firebase & Telegram Settings</h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-xs">Configure Infrastructure Integrations</p>
-                </div>
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-8">
+            {/* System Live Switch */}
+            <div className="p-6 bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between group transition-all duration-500 hover:border-brand-purple/30">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${systemConfig.system_live ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]'}`} />
+                  စနစ်ကို အသုံးပြုခွင့်ပေးမည်
+                </h4>
+                <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Enable System for Users</p>
               </div>
               <button
-                onClick={() => setShowSecrets(!showSecrets)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-900/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 text-xs font-bold transition-all"
+                type="button"
+                onClick={() => setSystemConfig({ ...systemConfig, system_live: !systemConfig.system_live })}
+                className={`relative w-14 h-7 rounded-full transition-all duration-500 p-1 ${
+                  systemConfig.system_live 
+                    ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]' 
+                    : 'bg-slate-300 dark:bg-slate-800'
+                }`}
               >
-                {showSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
-                {showSecrets ? 'Hide Secrets' : 'Show Secrets'}
+                <div className={`w-5 h-5 bg-white rounded-full shadow-lg transition-all duration-500 transform ${
+                  systemConfig.system_live ? 'translate-x-7' : 'translate-x-0'
+                }`} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveSystemConfig} className="space-y-8">
-              {isSystemLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <RefreshCw size={32} className="text-brand-purple animate-spin" />
-                </div>
-              ) : (
-                <>
-                  {/* Firebase Section */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-white/5">
-                  <Database size={16} className="text-brand-purple" />
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Firebase Configuration</h4>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Project ID</label>
-                    <input
-                      type="text"
-                      value={systemConfig.firebase_project_id}
-                      onChange={(e) => setSystemConfig({ ...systemConfig, firebase_project_id: e.target.value })}
-                      placeholder="e.g. my-project-123"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">API Key</label>
-                    <input
-                      type={showSecrets ? "text" : "password"}
-                      value={systemConfig.firebase_api_key}
-                      onChange={(e) => setSystemConfig({ ...systemConfig, firebase_api_key: e.target.value })}
-                      placeholder="AIzaSy..."
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Auth Domain</label>
-                    <input
-                      type="text"
-                      value={systemConfig.firebase_auth_domain}
-                      onChange={(e) => setSystemConfig({ ...systemConfig, firebase_auth_domain: e.target.value })}
-                      placeholder="my-project.firebaseapp.com"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">App ID</label>
-                    <input
-                      type="text"
-                      value={systemConfig.firebase_app_id}
-                      onChange={(e) => setSystemConfig({ ...systemConfig, firebase_app_id: e.target.value })}
-                      placeholder="1:123456789:web:abcdef"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Telegram Section */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-white/5">
-                  <Send size={16} className="text-brand-purple" />
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Telegram Notifications</h4>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Bot Token</label>
-                    <input
-                      type={showSecrets ? "text" : "password"}
-                      value={systemConfig.telegram_bot_token}
-                      onChange={(e) => setSystemConfig({ ...systemConfig, telegram_bot_token: e.target.value })}
-                      placeholder="123456789:ABC..."
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Chat ID</label>
-                    <input
-                      type="text"
-                      value={systemConfig.telegram_chat_id}
-                      onChange={(e) => setSystemConfig({ ...systemConfig, telegram_chat_id: e.target.value })}
-                      placeholder="e.g. -100123456789"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Debug & Testing Section */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-white/5">
-                  <RefreshCw size={16} className="text-brand-purple" />
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Debug & Testing</h4>
-                </div>
-                
-                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-                  <div>
-                    <h5 className="text-sm font-bold text-slate-900 dark:text-white">Mock Generation Mode</h5>
-                    <p className="text-xs text-slate-500">Enable this to test UI transitions without calling the real Gemini API.</p>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* RapidAPI Key */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono flex items-center gap-2">
+                  <Database size={12} /> RapidAPI Key (YouTube Transcript အတွက်)
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input
+                    type={showRapidKey ? "text" : "password"}
+                    value={systemConfig.rapidapi_key || ''}
+                    onChange={(e) => setSystemConfig({ ...systemConfig, rapidapi_key: e.target.value })}
+                    placeholder="RapidAPI Key ထည့်ပါ"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-12 py-4 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                  />
                   <button
                     type="button"
-                    onClick={() => setSystemConfig({ ...systemConfig, mock_mode: !systemConfig.mock_mode })}
-                    className={`w-12 h-6 rounded-full transition-all relative ${systemConfig.mock_mode ? 'bg-brand-purple' : 'bg-slate-300 dark:bg-slate-700'}`}
+                    onClick={() => setShowRapidKey(!showRapidKey)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-brand-purple transition-colors"
                   >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${systemConfig.mock_mode ? 'left-7' : 'left-1'}`} />
+                    {showRapidKey ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
-              <div className="pt-6">
-                <button
-                  type="submit"
-                  disabled={isSavingSystem}
-                  className="w-full py-4 bg-brand-purple text-white rounded-2xl font-bold hover:bg-brand-purple/90 transition-all shadow-lg shadow-brand-purple/20 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
-                >
-                  {isSavingSystem ? <RefreshCw size={20} className="animate-spin" /> : <Save size={20} />}
-                  Save System Configuration
-                </button>
-                <p className="text-center text-[10px] text-slate-500 mt-4 italic">
-                  Note: Changes to Firebase settings may require an app reload to take full effect.
-                </p>
+              {/* Gemini API Key */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono flex items-center gap-2">
+                  <Send size={12} /> Gemini API Key (AI စနစ်အတွက်)
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input
+                    type={showGeminiKey ? "text" : "password"}
+                    value={systemConfig.gemini_api_key || ''}
+                    onChange={(e) => setSystemConfig({ ...systemConfig, gemini_api_key: e.target.value })}
+                    placeholder="Gemini API Key ထည့်ပါ"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-12 py-4 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-brand-purple transition-colors"
+                  >
+                    {showGeminiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
-                </>
-              )}
-            </form>
-          </div>
+
+              {/* OpenAI API Key */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono flex items-center gap-2">
+                  <Send size={12} /> OpenAI API Key (TTS အတွက်)
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input
+                    type={showOpenAIKey ? "text" : "password"}
+                    value={systemConfig.openai_api_key || ''}
+                    onChange={(e) => setSystemConfig({ ...systemConfig, openai_api_key: e.target.value })}
+                    placeholder="OpenAI API Key ထည့်ပါ"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-12 py-4 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOpenAIKey(!showOpenAIKey)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-brand-purple transition-colors"
+                  >
+                    {showOpenAIKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-slate-200 dark:border-white/5">
+              <button
+                type="button"
+                onClick={handleSaveSystemConfig}
+                disabled={isSavingSystem}
+                className={`px-8 py-4 ${saveSuccess ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-brand-purple hover:bg-brand-purple/90'} text-white rounded-xl font-bold transition-all shadow-lg ${saveSuccess ? 'shadow-emerald-500/20' : 'shadow-brand-purple/20'} flex items-center gap-3 disabled:opacity-50 active:scale-95 font-mono uppercase tracking-widest hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] btn-pulse`}
+              >
+                {isSavingSystem ? (
+                  <RefreshCw size={20} className="animate-spin" />
+                ) : saveSuccess ? (
+                  <Check size={20} />
+                ) : (
+                  <Save size={20} />
+                )}
+                {saveSuccess ? 'သိမ်းဆည်းပြီးပါပြီ' : 'ပြင်ဆင်ချက်များ သိမ်းဆည်းမည်'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
       {activeTab === 'rules' && (
-        <div className="max-w-4xl mx-auto w-full">
-          <div className="bg-white/50 backdrop-blur dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl transition-colors duration-300">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-brand-purple/20 text-brand-purple rounded-xl flex items-center justify-center border border-brand-purple/20">
-                  <Languages size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Pronunciation Rules</h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-xs">Manage global text replacement rules for TTS</p>
-                </div>
-              </div>
+        <div className="space-y-8">
+          <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl transition-colors duration-300 neon-border-purple">
+            <div className="flex items-center gap-3 mb-8">
+              <Languages className="text-brand-purple" size={24} />
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white font-mono uppercase tracking-tighter">
+                {editingRuleId ? 'စည်းမျဉ်း ပြင်ဆင်ရန်' : 'စည်းမျဉ်းအသစ် ထည့်ရန်'}
+              </h3>
             </div>
 
-            <form onSubmit={handleCreateRule} className="space-y-6 mb-10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Original Text</label>
-                  <input
-                    type="text"
-                    value={newRuleOriginal}
-                    onChange={(e) => setNewRuleOriginal(e.target.value)}
-                    placeholder="e.g. AI"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Replacement Text</label>
-                  <input
-                    type="text"
-                    value={newRuleReplacement}
-                    onChange={(e) => setNewRuleReplacement(e.target.value)}
-                    placeholder="e.g. Artificial Intelligence"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all"
-                    required
-                  />
-                </div>
+            <form onSubmit={handleCreateRule} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono">မူရင်းစာသား (Original)</label>
+                <input
+                  type="text"
+                  value={newRuleOriginal}
+                  onChange={(e) => setNewRuleOriginal(e.target.value)}
+                  placeholder="ဥပမာ - ChatGPT"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-4 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                  required
+                />
               </div>
-              <div className="flex gap-3">
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 font-mono">အစားထိုးရန် (Replacement)</label>
+                <input
+                  type="text"
+                  value={newRuleReplacement}
+                  onChange={(e) => setNewRuleReplacement(e.target.value)}
+                  placeholder="ဥပမာ - ချတ် ဂျီပီတီ"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-4 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-mono"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2 flex gap-2">
                 <button
                   type="submit"
                   disabled={isSavingRule}
-                  className="flex-1 py-4 bg-brand-purple text-white rounded-2xl font-bold hover:bg-brand-purple/90 transition-all shadow-lg shadow-brand-purple/20 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
+                  className="flex-1 py-4 bg-brand-purple text-white rounded-xl font-bold hover:bg-brand-purple/90 transition-all shadow-lg shadow-brand-purple/20 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 font-mono uppercase tracking-widest btn-pulse"
                 >
-                  {isSavingRule ? <RefreshCw size={20} className="animate-spin" /> : (editingRuleId ? <Save size={20} /> : <Plus size={20} />)}
-                  {editingRuleId ? 'Update Pronunciation Rule' : 'Add Pronunciation Rule'}
+                  {isSavingRule ? <RefreshCw size={18} className="animate-spin" /> : editingRuleId ? <Save size={18} /> : <Plus size={18} />}
+                  {editingRuleId ? 'သိမ်းမည်' : 'ထည့်မည်'}
                 </button>
                 {editingRuleId && (
                   <button
                     type="button"
                     onClick={cancelEditRule}
-                    className="px-6 py-4 bg-slate-100 dark:bg-slate-900/50 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-800 transition-all border border-slate-200 dark:border-slate-800"
+                    className="p-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                   >
-                    Cancel
+                    <XCircle size={18} />
                   </button>
                 )}
               </div>
             </form>
+          </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-white/5">
-                <Edit3 size={16} className="text-brand-purple" />
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Active Rules ({rules.length})</h4>
-              </div>
-
-              {isRulesLoading ? (
-                <div className="flex items-center justify-center py-10">
-                  <RefreshCw size={24} className="text-brand-purple animate-spin" />
-                </div>
-              ) : rules.length === 0 ? (
-                <div className="py-10 text-center text-slate-500 italic text-sm">
-                  No pronunciation rules defined yet.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3">
-                  {rules.map((rule) => (
-                    <div key={rule.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl group hover:border-brand-purple/30 transition-all">
-                      <div className="flex items-center gap-4 overflow-hidden">
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Original</span>
-                          <span className="text-sm font-mono text-slate-900 dark:text-white truncate">{rule.original}</span>
-                        </div>
-                        <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Replacement</span>
-                          <span className="text-sm font-mono text-brand-purple truncate">{rule.replacement}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleEditRule(rule)}
-                          className="p-2 text-slate-400 hover:text-brand-purple hover:bg-brand-purple/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                          title="Edit Rule"
-                        >
-                          <Edit3 size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteRule(rule.id)}
-                          disabled={isDeletingRule === rule.id}
-                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                          title="Delete Rule"
-                        >
-                          {isDeletingRule === rule.id ? <RefreshCw size={18} className="animate-spin" /> : <Trash2 size={18} />}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl transition-colors duration-300">
+            <div className="flex items-center gap-3 mb-6">
+              <Database className="text-brand-purple" size={20} />
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">လက်ရှိ စည်းမျဉ်းများ</h3>
+              <span className="px-2 py-0.5 bg-brand-purple/20 text-brand-purple border border-brand-purple/30 rounded-lg text-[10px] font-bold uppercase">
+                {rules.length} ခု
+              </span>
             </div>
+
+            {isRulesLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="w-8 h-8 border-2 border-brand-purple/20 border-t-brand-purple rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {rules.map((rule) => (
+                  <div key={rule.id} className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between group hover:border-brand-purple/30 transition-all">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{rule.original}</span>
+                      <span className="text-[10px] text-slate-500 font-mono mt-1">→ {rule.replacement}</span>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleEditRule(rule)}
+                        className="p-2 text-slate-400 hover:text-brand-purple hover:bg-brand-purple/10 rounded-lg transition-all"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRule(rule.id)}
+                        disabled={isDeletingRule === rule.id}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                      >
+                        {isDeletingRule === rule.id ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {rules.length === 0 && (
+                  <div className="col-span-full py-10 text-center text-slate-500 italic text-sm">
+                    စည်းမျဉ်းများ မရှိသေးပါ။
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
-    </div>
+      </div>
 
-      <Toast 
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
-      />
-      <Modal
-        isOpen={modal.isOpen}
-        onClose={() => setModal({ ...modal, isOpen: false })}
-        onConfirm={modal.onConfirm}
-        title={modal.title}
-        message={modal.message}
-        type={modal.type}
-        confirmText={modal.confirmText}
-        cancelText={modal.cancelText}
-        placeholder={modal.placeholder}
-        defaultValue={modal.defaultValue}
-        inputType={modal.inputType}
-      />
+      {toast.isVisible && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          isVisible={toast.isVisible}
+          onClose={() => setToast(prev => ({ ...prev, isVisible: false }))} 
+        />
+      )}
     </>
   );
 };
+
+export default AdminDashboard;

@@ -21,6 +21,8 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
+  const lastResultUrl = useRef<string | null>(null);
+
   useEffect(() => {
     if (audioRef.current && result) {
       const audio = audioRef.current;
@@ -33,6 +35,16 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
       audio.addEventListener('timeupdate', updateTime);
       audio.addEventListener('loadedmetadata', updateDuration);
       audio.addEventListener('ended', onEnded);
+
+      // Auto-play when a new result is received
+      if (result.audioUrl !== lastResultUrl.current) {
+        lastResultUrl.current = result.audioUrl;
+        audio.play().then(() => {
+          setIsPlaying(true);
+        }).catch(err => {
+          console.warn("Auto-play blocked by browser:", err);
+        });
+      }
 
       return () => {
         audio.removeEventListener('timeupdate', updateTime);
@@ -161,43 +173,40 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
 
   if (isLoading) {
     return (
-      <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 shadow-xl flex flex-col items-center justify-center text-center transition-colors duration-300">
-        <div className="w-16 h-16 border-4 border-brand-purple/20 border-t-brand-purple rounded-full animate-spin mb-4" />
-        <p className="text-slate-500 dark:text-slate-400">Generating your voiceover...</p>
+      <div className="bg-brand-dark/80 backdrop-blur-xl border border-white/5 rounded-3xl p-12 shadow-2xl flex flex-col items-center justify-center text-center transition-all duration-300 neon-border-violet inner-glow">
+        <div className="w-16 h-16 border-4 border-brand-violet/20 border-t-brand-violet rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(139,92,246,0.3)]" />
+        <p className="text-slate-400 font-mono uppercase tracking-widest">အသံဖိုင် ထုတ်ယူနေပါသည်...</p>
       </div>
     );
   }
 
   if (!result) {
     return (
-      <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 shadow-xl flex flex-col items-center justify-center text-center transition-colors duration-300">
-        <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-600 mb-6 border border-slate-200 dark:border-slate-800">
+      <div className="bg-brand-dark/80 backdrop-blur-xl border border-white/5 rounded-3xl p-12 shadow-2xl flex flex-col items-center justify-center text-center transition-all duration-300 inner-glow">
+        <div className="w-20 h-20 bg-brand-black/50 rounded-full flex items-center justify-center text-slate-600 mb-6 border border-white/5 shadow-inner">
           <Headphones size={40} />
         </div>
-        <h3 className="text-lg font-semibold mb-2 text-slate-900 dark:text-white">Output Preview</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm max-w-xs">
-          Generated audio and subtitles will appear here after you click generate.
+        <h3 className="text-lg font-bold mb-2 text-white font-mono uppercase tracking-tighter">ရလဒ်များကို ကြည့်ရှုရန်</h3>
+        <p className="text-slate-500 text-sm max-w-xs">
+          အသံဖိုင်နှင့် စာတန်းထိုးများကို ဤနေရာတွင် ကြည့်ရှုနိုင်ပါမည်။
         </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[32px] p-8 sm:p-10 shadow-xl space-y-8 transition-colors duration-300">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-900 dark:text-white">
-          <Music className="text-brand-purple" size={24} />
-          Output Preview
-        </h2>
-        <div className="px-4 py-1.5 bg-brand-purple/10 text-brand-purple rounded-full text-xs font-bold uppercase tracking-wider w-fit">
-          Ready to Download
+    <div className="bg-brand-dark/80 backdrop-blur-xl border border-white/5 rounded-[32px] p-8 sm:p-10 shadow-2xl space-y-8 transition-all duration-300 inner-glow">
+      <div className="flex flex-col items-center text-center mb-4 border-b border-white/5 pb-6">
+        <div className="w-12 h-12 bg-brand-violet/10 text-brand-violet rounded-xl flex items-center justify-center mb-2 border border-brand-violet/20 shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+          <Music size={24} />
         </div>
+        <h2 className="text-xl font-bold text-white font-mono tracking-tighter uppercase">ရလဒ်များကို ကြည့်ရှုရန်</h2>
       </div>
 
       <div className="space-y-8">
         {/* Modern Audio Player Card */}
-        <div className="bg-slate-50/80 dark:bg-slate-800/40 backdrop-blur-md rounded-[32px] p-8 border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] relative overflow-hidden group flex flex-col items-center space-y-8">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-purple/5 via-transparent to-blue-500/5 pointer-events-none" />
+        <div className="bg-brand-black/50 backdrop-blur-md rounded-[32px] p-8 border border-white/5 shadow-2xl relative overflow-hidden group flex flex-col items-center space-y-8 inner-glow">
+          <div className="absolute inset-0 bg-gradient-to-br from-brand-violet/5 via-transparent to-brand-cyan/5 pointer-events-none" />
           
           {/* Waveform Visualizer Area */}
           <div className="relative h-32 w-full rounded-2xl overflow-hidden shrink-0">
@@ -213,7 +222,7 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
           <div className="flex justify-center w-full relative z-10 shrink-0">
             <button
               onClick={togglePlay}
-              className="w-20 h-20 bg-gradient-to-tr from-brand-purple to-blue-500 text-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.4)] hover:shadow-[0_0_40px_rgba(139,92,246,0.6)] hover:scale-105 active:scale-95 transition-all group/play"
+              className="w-20 h-20 bg-gradient-to-tr from-brand-violet to-brand-cyan text-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.4)] hover:shadow-[0_0_40px_rgba(139,92,246,0.6)] hover:scale-105 active:scale-95 transition-all group/play neon-glow-violet"
             >
               {isPlaying ? (
                 <Pause size={32} fill="currentColor" />
@@ -236,19 +245,19 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
                   step={0.01}
                   value={currentTime}
                   onChange={handleSeek}
-                  className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer accent-brand-purple hover:h-2 transition-all"
+                  className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-brand-violet hover:h-2 transition-all"
                   style={{
-                    background: `linear-gradient(to right, #8B5CF6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, transparent ${(currentTime / (duration || 1)) * 100}%, transparent 100%)`
+                    background: `linear-gradient(to right, #8B5CF6 0%, #22D3EE ${(currentTime / (duration || 1)) * 100}%, transparent ${(currentTime / (duration || 1)) * 100}%, transparent 100%)`
                   }}
                 />
               </div>
               
               {/* Timestamps */}
-              <div className="flex items-center justify-between w-full px-1">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              <div className="flex items-center justify-between w-full px-1 font-mono">
+                <span className="text-xs font-medium text-slate-500">
                   {formatDisplayTime(currentTime)}
                 </span>
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="text-xs font-medium text-slate-500">
                   {formatDisplayTime(duration)}
                 </span>
               </div>
@@ -256,10 +265,10 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
 
             {/* Volume Control */}
             <div className="flex items-center justify-center w-full shrink-0">
-              <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-slate-800/50 px-6 py-3 rounded-2xl border border-slate-200/50 dark:border-slate-700/50">
+              <div className="flex items-center gap-4 bg-white/5 px-6 py-3 rounded-2xl border border-white/5">
                 <button 
                   onClick={() => setIsMuted(!isMuted)}
-                  className="text-slate-400 hover:text-brand-purple transition-colors p-1"
+                  className="text-slate-400 hover:text-brand-violet transition-colors p-1"
                 >
                   {isMuted || playerVolume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
                 </button>
@@ -275,7 +284,7 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
                       setPlayerVolume(parseFloat(e.target.value));
                       if (isMuted) setIsMuted(false);
                     }}
-                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer accent-brand-purple"
+                    className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-brand-violet"
                     style={{
                       background: `linear-gradient(to right, #8B5CF6 0%, #8B5CF6 ${(isMuted ? 0 : playerVolume) * 100}%, transparent ${(isMuted ? 0 : playerVolume) * 100}%, transparent 100%)`
                     }}
@@ -291,11 +300,11 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
         <div className="space-y-6">
           {/* Subtitle Preview Box */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <FileText size={14} /> Subtitle Preview (SRT)
+            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 font-mono">
+              <FileText size={14} /> စာတန်းထိုး အချက်အလက်များ (SRT)
             </h3>
-            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 h-40 overflow-y-auto custom-scrollbar shadow-inner">
-              <pre className="text-[11px] sm:text-xs font-mono text-slate-600 dark:text-slate-400 whitespace-pre-wrap leading-relaxed">
+            <div className="bg-brand-black/50 border border-white/5 rounded-2xl p-6 h-40 overflow-y-auto custom-scrollbar shadow-inner inner-glow">
+              <pre className="text-[11px] sm:text-xs font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">
                 {result.srtContent}
               </pre>
             </div>
@@ -305,17 +314,17 @@ export const OutputPreview: React.FC<OutputPreviewProps> = ({ result, isLoading,
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button
               onClick={() => fetch(result.audioUrl).then(r => r.blob()).then(b => downloadFile(b, 'vlogs-by-saw-audio.mp3'))}
-              className="flex items-center justify-center gap-3 py-4 bg-brand-purple/10 text-brand-purple rounded-2xl font-bold hover:bg-brand-purple hover:text-white transition-all border border-brand-purple/20 group"
+              className="flex items-center justify-center gap-3 py-5 bg-brand-violet/10 text-brand-violet rounded-2xl font-bold hover:bg-brand-violet hover:text-white transition-all border border-brand-violet/20 group font-mono uppercase tracking-widest hover:shadow-[0_0_20px_rgba(139,92,246,0.4)] btn-pulse"
             >
               <Music size={20} className="group-hover:scale-110 transition-transform" />
-              Download MP3
+              MP3 ဒေါင်းလုဒ်လုပ်ရန်
             </button>
             <button
               onClick={() => downloadFile(result.srtContent, 'vlogs-by-saw-subs.srt')}
-              className="flex items-center justify-center gap-3 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 group"
+              className="flex items-center justify-center gap-3 py-5 bg-white/5 text-slate-300 rounded-2xl font-bold hover:bg-white/10 transition-all border border-white/5 group font-mono uppercase tracking-widest hover:shadow-[0_0_20px_rgba(255,255,255,0.05)] btn-pulse"
             >
               <FileText size={20} className="group-hover:scale-110 transition-transform" />
-              Download SRT
+              SRT ဒေါင်းလုဒ်လုပ်ရန်
             </button>
           </div>
         </div>

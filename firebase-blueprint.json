@@ -51,47 +51,60 @@
       "description": "A record of an authorized Access Code for the system.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "The Access Code itself." },
-        "userId": { "type": "string", "description": "The User ID (same as Access Code)." },
-        "password": { "type": "string", "description": "The user's password." },
-        "expiryDate": { "type": "string", "format": "date-time", "description": "The subscription expiry date." },
-        "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role." },
+        "id": { "type": "string", "description": "The Access Code itself (Password/PIN)." },
+        "username": { "type": "string", "description": "The unique User ID for login." },
         "label": { "type": "string", "description": "Optional name/label for the ID." },
         "isActive": { "type": "boolean", "description": "Whether the ID is active." },
         "createdAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string", "description": "UID of the admin who created it." }
+        "createdBy": { "type": "string", "description": "UID of the admin who created it." },
+        "expiryDate": { "type": "string", "format": "date-time", "description": "Optional expiry date for the account." },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role." }
       },
-      "required": ["id", "isActive", "createdAt", "role"]
+      "required": ["id", "username", "isActive", "createdAt", "createdBy", "role"]
     },
     "GlobalSettings": {
       "title": "Global Settings",
       "description": "System-wide settings for API keys and monitoring.",
       "type": "object",
       "properties": {
-        "global_system_key": { "type": "string" },
+        "admin_global_api_key": { "type": "string" },
         "allow_global_key": { "type": "boolean" },
         "total_generations": { "type": "number" }
       }
     },
     "SystemConfig": {
       "title": "System Configuration",
-      "description": "Global system configuration for Firebase and Telegram.",
+      "description": "Global system configuration for API keys and system status.",
       "type": "object",
       "properties": {
-        "firebase_project_id": { "type": "string" },
-        "firebase_api_key": { "type": "string" },
-        "firebase_auth_domain": { "type": "string" },
-        "firebase_app_id": { "type": "string" },
+        "gemini_api_key": { "type": "string" },
+        "rapidapi_key": { "type": "string" },
+        "openai_api_key": { "type": "string" },
+        "system_live": { "type": "boolean" },
         "telegram_bot_token": { "type": "string" },
         "telegram_chat_id": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "Session": {
+      "title": "User Session",
+      "description": "Maps a Firebase Auth UID to an Access Code.",
+      "type": "object",
+      "properties": {
+        "accessCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["accessCode", "createdAt"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
+    "/profiles/{userId}": {
       "schema": "User",
       "description": "User profile document."
+    },
+    "/sessions/{uid}": {
+      "schema": "Session",
+      "description": "User session mapping."
     },
     "/settings/global": {
       "schema": "GlobalSettings",
@@ -105,13 +118,13 @@
       "schema": "HistoryItem",
       "description": "Generation history for users."
     },
-    "/vlogs_users/{accessCode}": {
+    "/users/{accessCode}": {
       "schema": "AuthorizedUser",
       "description": "Authorized Access Codes for the system."
     },
-    "/system_config/main": {
+    "/config/system_config": {
       "schema": "SystemConfig",
-      "description": "Global system configuration for Firebase and Telegram."
+      "description": "Global system configuration for API keys and system status."
     }
   }
 }

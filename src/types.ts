@@ -12,22 +12,20 @@ export interface User {
 
 export interface AuthorizedUser {
   id: string; // Document ID (Access Code)
-  userId?: string; // Explicit User ID as requested
+  password?: string; // Optional password for users
   createdAt: any; // Firestore Timestamp
   isActive: boolean;
   role: 'admin' | 'user';
+  expiryDate?: string; // ISO Date String
   note?: string; // Optional name/label
   label?: string; // Alias for note
   api_key_stored?: string;
-  password?: string; // User password
-  expiryDate?: string; // ISO date string
   createdBy?: string;
 }
 
 export interface GlobalSettings {
   global_system_key?: string;
-  api_keys?: string[]; // List of rotated API keys
-  allow_admin_keys: boolean; // Toggle to allow users to use admin keys
+  allow_global_key: boolean;
   total_generations: number;
   mock_mode?: boolean;
 }
@@ -39,6 +37,10 @@ export interface SystemConfig {
   firebase_app_id: string;
   telegram_bot_token: string;
   telegram_chat_id: string;
+  rapidapi_key?: string;
+  gemini_api_key?: string;
+  openai_api_key?: string;
+  system_live?: boolean;
   mock_mode?: boolean;
   updatedAt?: any;
 }
@@ -74,13 +76,34 @@ export interface SRTSubtitle {
   text: string;
 }
 
+export interface AudioEffects {
+  echo: {
+    enabled: boolean;
+    delay: number; // in seconds
+    feedback: number; // 0 to 1
+  };
+  reverb: {
+    enabled: boolean;
+    decay: number; // in seconds
+    mix: number; // 0 to 1
+  };
+  pitchShift: {
+    enabled: boolean;
+    semitones: number; // -12 to 12
+  };
+  chorus: {
+    enabled: boolean;
+    rate: number; // in Hz
+    depth: number; // 0 to 1
+  };
+}
+
 export interface TTSConfig {
-  model: string;
   voiceId: string;
   speed: number;
   pitch: number;
   volume: number;
-  styleInstruction?: string;
+  effects?: AudioEffects;
 }
 
 export interface AudioResult {

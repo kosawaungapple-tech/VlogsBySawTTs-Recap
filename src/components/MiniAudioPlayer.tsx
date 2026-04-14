@@ -16,9 +16,19 @@ export const MiniAudioPlayer: React.FC<MiniAudioPlayerProps> = ({ base64Data }) 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (base64Data) {
+    if (base64Data && typeof base64Data === 'string') {
       try {
-        const binaryString = window.atob(base64Data);
+        // Clean up the base64 string (remove whitespace/newlines)
+        const cleanBase64 = base64Data.replace(/\s/g, '');
+        
+        let binaryString;
+        try {
+          binaryString = window.atob(cleanBase64);
+        } catch (e) {
+          console.error("MiniAudioPlayer: Failed to decode base64 audio", e);
+          return;
+        }
+
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);

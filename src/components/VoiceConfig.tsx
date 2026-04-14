@@ -1,83 +1,70 @@
-import React, { useMemo, useEffect } from 'react';
-import { Zap, ChevronDown, Volume2, Info, Cpu, Wand2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, Volume2, Info, Settings, Sliders } from 'lucide-react';
 import { TTSConfig } from '../types';
-import { VOICE_OPTIONS, MODEL_OPTIONS, MODEL_VOICE_MAPPING } from '../constants';
+import { VOICE_OPTIONS } from '../constants';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface VoiceConfigProps {
   config: TTSConfig;
   setConfig: (config: TTSConfig) => void;
   isDarkMode: boolean;
+  recapStyle: 'Warm' | 'Professional' | 'Excited' | 'Angry' | 'Sad' | 'Whisper';
+  setRecapStyle: (style: 'Warm' | 'Professional' | 'Excited' | 'Angry' | 'Sad' | 'Whisper') => void;
 }
 
-const QUICK_STYLES = [
-  { label: 'Warm', value: 'Warm and friendly' },
-  { label: 'Professional', value: 'Professional and authoritative' },
-  { label: 'Excited', value: 'Excited and energetic' },
-  { label: 'Angry', value: 'Angry and intense' },
-  { label: 'Sad', value: 'Sad and emotional' },
-  { label: 'Whisper', value: 'Whispering and soft' },
-];
+export const VoiceConfig: React.FC<VoiceConfigProps> = ({ config, setConfig, isDarkMode, recapStyle, setRecapStyle }) => {
+  const [isSlidersOpen, setIsSlidersOpen] = useState(false);
 
-export const VoiceConfig: React.FC<VoiceConfigProps> = ({ config, setConfig, isDarkMode }) => {
   const handleChange = (key: keyof TTSConfig, value: any) => {
     setConfig({ ...config, [key]: value });
   };
 
-  // Filtered voices based on selected model
-  const filteredVoices = useMemo(() => {
-    const supportedVoiceIds = MODEL_VOICE_MAPPING[config.model] || [];
-    return VOICE_OPTIONS.filter(voice => supportedVoiceIds.includes(voice.id));
-  }, [config.model]);
-
-  // Reset voice if not supported by new model
-  useEffect(() => {
-    const isSupported = filteredVoices.some(v => v.id === config.voiceId);
-    if (!isSupported && filteredVoices.length > 0) {
-      handleChange('voiceId', filteredVoices[0].id);
-    }
-  }, [config.model, filteredVoices]);
-
   return (
-    <div className="bg-white/50 backdrop-blur dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[32px] p-8 shadow-2xl transition-colors duration-300">
+    <div className="bg-brand-dark/80 backdrop-blur-xl border border-white/5 rounded-[32px] p-8 shadow-2xl transition-all duration-300 hover:neon-border-violet inner-glow">
+      <div className="flex flex-col items-center text-center mb-8 border-b border-white/5 pb-6">
+        <div className="w-12 h-12 bg-brand-violet/10 text-brand-violet rounded-xl flex items-center justify-center mb-2 border border-brand-violet/20 shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+          <Settings size={24} strokeWidth={1.5} />
+        </div>
+        <h2 className="text-xl font-bold text-white font-mono tracking-tighter uppercase">အသံထည့်သွင်းခြင်း</h2>
+      </div>
+      
       <div className="space-y-8">
-        {/* Model Selection */}
-        <div className="group">
-          <label className="flex items-center gap-2 text-lg font-medium text-slate-700 dark:text-slate-100 mb-4 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
-            <Cpu size={20} className="text-brand-purple" />
-            Model ရွေးချယ်ရန်
+        {/* Recap Style Selection */}
+        <div className="space-y-4">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-400 font-mono uppercase tracking-widest">
+            ဇာတ်လမ်းပုံစံ (Recap Style)
           </label>
-          <div className="relative">
-            <select
-              value={config.model}
-              onChange={(e) => handleChange('model', e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-4 text-slate-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all cursor-pointer font-medium"
-            >
-              {MODEL_OPTIONS.map((model) => (
-                <option key={model.id} value={model.id} className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
-                  {model.name}
-                </option>
-              ))}
-            </select>
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-              <ChevronDown size={20} />
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {(['Warm', 'Professional', 'Excited', 'Angry', 'Sad', 'Whisper'] as const).map((style) => (
+              <button
+                key={style}
+                onClick={() => setRecapStyle(style)}
+                className={`py-1.5 px-4 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                  recapStyle === style 
+                    ? 'bg-brand-cyan/10 text-brand-cyan border-brand-cyan shadow-[0_0_10px_rgba(34,211,238,0.2)]' 
+                    : 'bg-white/5 text-slate-500 border-white/10 hover:border-white/30'
+                }`}
+              >
+                {style}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Voice Selection */}
         <div className="group">
-          <label className="flex items-center gap-2 text-lg font-medium text-slate-700 dark:text-slate-100 mb-4 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
-            <Volume2 size={20} className="text-brand-purple" />
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-4 group-hover:text-brand-violet transition-colors font-mono uppercase tracking-widest">
+            <Volume2 size={16} className="text-brand-violet" strokeWidth={1.5} />
             အသံရွေးချယ်ရန်
           </label>
           <div className="relative">
             <select
               value={config.voiceId}
               onChange={(e) => handleChange('voiceId', e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-4 text-slate-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all cursor-pointer font-medium"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white appearance-none focus:outline-none focus:ring-2 focus:ring-brand-violet/50 transition-all cursor-pointer font-sans text-sm"
             >
-              {filteredVoices.map((voice) => (
-                <option key={voice.id} value={voice.id} className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
+              {VOICE_OPTIONS.map((voice) => (
+                <option key={voice.id} value={voice.id} className="bg-brand-black text-white">
                   {voice.name}
                 </option>
               ))}
@@ -88,74 +75,76 @@ export const VoiceConfig: React.FC<VoiceConfigProps> = ({ config, setConfig, isD
           </div>
         </div>
 
-        {/* Style Instructions */}
-        <div className="group">
-          <label className="flex items-center gap-2 text-lg font-medium text-slate-700 dark:text-slate-100 mb-4 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
-            <Wand2 size={20} className="text-brand-purple" />
-            Style Instructions
-          </label>
-          <div className="space-y-4">
-            <input
-              type="text"
-              value={config.styleInstruction || ''}
-              onChange={(e) => handleChange('styleInstruction', e.target.value)}
-              placeholder="ဥပမာ - Angry, Excited, Professional..."
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-purple/50 transition-all font-medium placeholder:text-slate-400"
-            />
-            <div className="flex flex-wrap gap-2">
-              {QUICK_STYLES.map((style) => (
-                <button
-                  key={style.label}
-                  onClick={() => handleChange('styleInstruction', style.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    config.styleInstruction === style.value
-                      ? 'bg-brand-purple text-white shadow-lg'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {style.label}
-                </button>
-              ))}
+        {/* Sliders Accordion */}
+        <div className="border border-white/5 rounded-2xl overflow-hidden">
+          <button 
+            onClick={() => setIsSlidersOpen(!isSlidersOpen)}
+            className="w-full px-6 py-4 flex items-center justify-between bg-white/5 hover:bg-white/10 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Sliders size={18} className="text-brand-violet" />
+              <span className="text-sm font-bold text-white font-mono uppercase tracking-widest">အဆင့်မြင့် ဆက်တင်များ</span>
             </div>
-          </div>
+            <ChevronDown 
+              size={20} 
+              className={`text-slate-400 transition-transform duration-300 ${isSlidersOpen ? 'rotate-180' : ''}`} 
+            />
+          </button>
+          
+          <AnimatePresence>
+            {isSlidersOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+              >
+                <div className="p-6 space-y-6 bg-white/2">
+                  <Slider
+                    label="အမြန်နှုန်း"
+                    value={config.speed}
+                    min={0.25}
+                    max={4.0}
+                    step={0.05}
+                    suffix="x"
+                    onChange={(v) => handleChange('speed', v)}
+                    isDarkMode={true}
+                    compact
+                  />
+                  <Slider
+                    label="အသံအနိမ့်အမြင့်"
+                    value={config.pitch}
+                    min={-20.0}
+                    max={20.0}
+                    step={0.5}
+                    suffix=""
+                    onChange={(v) => handleChange('pitch', v)}
+                    isDarkMode={true}
+                    compact
+                  />
+                  <Slider
+                    label="အသံပမာဏ"
+                    value={config.volume}
+                    min={0}
+                    max={100}
+                    step={1}
+                    suffix="%"
+                    onChange={(v) => handleChange('volume', v)}
+                    isDarkMode={true}
+                    compact
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <Slider
-          label="အမြန်နှုန်း"
-          value={config.speed}
-          min={0.25}
-          max={4.0}
-          step={0.05}
-          suffix="x"
-          onChange={(v) => handleChange('speed', v)}
-          isDarkMode={isDarkMode}
-        />
-        <Slider
-          label="အသံအနိမ့်အမြင့်"
-          value={config.pitch}
-          min={-20.0}
-          max={20.0}
-          step={0.5}
-          suffix=""
-          onChange={(v) => handleChange('pitch', v)}
-          isDarkMode={isDarkMode}
-        />
-        <div className="flex items-center gap-2 px-4 py-2 bg-brand-purple/5 border border-brand-purple/10 rounded-xl">
-          <Info size={14} className="text-brand-purple shrink-0" />
-          <p className="text-[10px] text-slate-500 dark:text-slate-400">
-            Changes will apply to the next generation.
+        <div className="flex items-center gap-2 px-4 py-3 bg-brand-violet/5 border border-brand-violet/10 rounded-xl font-mono">
+          <Info size={14} className="text-brand-violet shrink-0" />
+          <p className="text-[10px] text-slate-400">
+            အပြောင်းအလဲများသည် နောက်တစ်ကြိမ်တွင် အကျိုးသက်ရောက်မည်ဖြစ်သည်။
           </p>
         </div>
-        <Slider
-          label="အသံပမာဏ"
-          value={config.volume}
-          min={0}
-          max={100}
-          step={1}
-          suffix="%"
-          onChange={(v) => handleChange('volume', v)}
-          isDarkMode={isDarkMode}
-        />
       </div>
     </div>
   );
@@ -170,15 +159,16 @@ interface SliderProps {
   suffix?: string;
   onChange: (val: number) => void;
   isDarkMode: boolean;
+  compact?: boolean;
 }
 
-const Slider: React.FC<SliderProps> = ({ label, value, min, max, step, suffix, onChange, isDarkMode }) => {
+const Slider: React.FC<SliderProps> = ({ label, value, min, max, step, suffix, onChange, isDarkMode, compact }) => {
   return (
-    <div className="group">
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-lg font-medium text-slate-700 dark:text-slate-100 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{label}</span>
-        <span className="text-lg font-medium text-brand-purple">
-          {value > 0 && (label === 'Pitch' || label === 'အသံအနိမ့်အမြင့်') ? `+${value}` : value}
+    <div className={`group ${compact ? 'space-y-2' : 'space-y-4'}`}>
+      <div className="flex justify-between items-center">
+        <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-slate-400 group-hover:text-brand-violet transition-colors font-mono uppercase tracking-wider`}>{label}</span>
+        <span className={`${compact ? 'text-xs' : 'text-sm'} font-bold text-brand-violet font-mono`}>
+          {value > 0 && (label === 'Pitch' || label === 'အသံအနိမ့်အမြင့်' || label === 'Semitones') ? `+${value}` : value}
           {suffix}
         </span>
       </div>
@@ -190,9 +180,9 @@ const Slider: React.FC<SliderProps> = ({ label, value, min, max, step, suffix, o
           step={step}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-full h-2 bg-slate-200 dark:bg-white/5 rounded-full appearance-none cursor-pointer accent-brand-purple hover:bg-slate-300 dark:hover:bg-white/10 transition-colors"
+          className={`w-full ${compact ? 'h-1' : 'h-1.5'} bg-white/5 rounded-full appearance-none cursor-pointer accent-brand-violet hover:bg-white/10 transition-all`}
           style={{
-            background: `linear-gradient(to right, #8B5CF6 0%, #8B5CF6 ${( (value - min) / (max - min) ) * 100}%, ${isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'} ${( (value - min) / (max - min) ) * 100}%, ${isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'} 100%)`
+            background: `linear-gradient(to right, #8B5CF6 0%, #8B5CF6 ${( (value - min) / (max - min) ) * 100}%, rgba(255, 255, 255, 0.05) ${( (value - min) / (max - min) ) * 100}%, rgba(255, 255, 255, 0.05) 100%)`
           }}
         />
       </div>
